@@ -1,3 +1,4 @@
+import os
 import re
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Dict, Any
@@ -18,31 +19,22 @@ DEFAULT_EXCEL_PATH = r"D:\10_results\combined.2.xlsx"
 DEFAULT_SHEET = "SWEEP_2"
 
 DEFAULT_BLOCK_RANGE = "A2:BC13"
-
-# Разрыв между блоками (пример: A2:BC13 -> следующий A17:BC28 => 3 строки пустые)
 DEFAULT_GAP_ROWS = 3
 
-# Подписи сценариев по умолчанию (или None чтобы вообще не использовать)
-# Должно быть РОВНО столько, сколько таблиц в блоке.
 DEFAULT_SCENARIO_LABELS: Optional[List[str]] = [
     "50% SS", "50% D", "100% SS", "100% D",
     "200% SS", "200% D", "400% SS", "400% D",
 ]
-
 USE_DEFAULT_LABELS = True
 
-# Подписи двух нижних рядов (слева от подписей значений)
 TOP_AXIS_NAME = "Мощность ВЭУ"
 BOTTOM_AXIS_NAME = "Схема"
 
-# ========== НАСТРОЙКИ СТРЕЛОК (РАЗНЫЕ ДЛЯ ДВУХ ГРАФИКОВ) ==========
-# График A минимум для каждого по горизонтали — подписываются (x_labels первой таблицы)
 ARROWS_A_FIRST = dict(angle_deg=180, length_y=0.3, tip_gap_y=0.00, text_gap_y=0.06, lw=1.0, fontsize=9, box=True)
-ARROWS_A_LAST  = dict(angle_deg=0, length_y=0.3, tip_gap_y=0.00, text_gap_y=0.06, lw=1.0, fontsize=9, box=True)
+ARROWS_A_LAST  = dict(angle_deg=0,   length_y=0.3, tip_gap_y=0.00, text_gap_y=0.06, lw=1.0, fontsize=9, box=True)
 
-# График B минимум по вертикали — подписываются (y_labels первой таблицы)
 ARROWS_B_FIRST = dict(angle_deg=180, length_y=0.3, tip_gap_y=0.00, text_gap_y=0.05, lw=1.0, fontsize=9, box=True)
-ARROWS_B_LAST  = dict(angle_deg=0, length_y=0.35, tip_gap_y=0.00, text_gap_y=0.05, lw=1.0, fontsize=9, box=True)
+ARROWS_B_LAST  = dict(angle_deg=0,   length_y=0.35, tip_gap_y=0.00, text_gap_y=0.05, lw=1.0, fontsize=9, box=True)
 
 
 # =========================
@@ -146,7 +138,6 @@ def _block_range_for_graph_index(base_range: str, graph_index: int, gap_rows: in
     a1 = f"{get_column_letter(min_col)}{new_min_row}:{get_column_letter(max_col)}{new_max_row}"
     return a1, min_col, new_min_row, max_col, new_max_row
 
-
 def _cells_to_tabbed_text(ws: Worksheet, min_col: int, min_row: int, max_col: int, max_row: int) -> str:
     lines = []
     for r in range(min_row, max_row + 1):
@@ -157,21 +148,19 @@ def _cells_to_tabbed_text(ws: Worksheet, min_col: int, min_row: int, max_col: in
         lines.append("\t".join(row_vals))
     return "\n".join(lines)
 
-
 def parse_tables_from_excel(xlsx_path: str, sheet_name: str, a1_range: str) -> Tuple[List[Table2D], str]:
-    wb = load_workbook(xlsx_path, data_only=True)  # значения формул
+    wb = load_workbook(xlsx_path, data_only=True)
     try:
         if sheet_name not in wb.sheetnames:
             raise ValueError(f"Sheet '{sheet_name}' not found in workbook.")
-
         ws = wb[sheet_name]
+
         min_col, min_row, max_col, max_row = range_boundaries(a1_range)
 
-        # y-axis label from A(row_start-1)
         y_title_row = min_row - 1
         y_title = ""
         if y_title_row >= 1:
-            v = ws.cell(row=y_title_row, column=1).value  # A
+            v = ws.cell(row=y_title_row, column=1).value
             y_title = "" if v is None else str(v).strip()
 
         block_text = _cells_to_tabbed_text(ws, min_col, min_row, max_col, max_row)
@@ -216,7 +205,6 @@ def _annotate_point_polar(
     xr = (xmax - xmin) if xmax > xmin else 1.0
     yr = (ymax - ymin) if ymax > ymin else 1.0
 
-    # поправка, чтобы угол был "геометрический" на экране
     k = xr / yr
     theta = np.deg2rad(angle_deg)
 
@@ -227,15 +215,12 @@ def _annotate_point_polar(
     ux /= norm
     uy /= norm
 
-    # наконечник рядом с точкой (с небольшим отступом от центра точки)
     x_tip = x_point - ux * tip_gap_y
     y_tip = y_point - uy * tip_gap_y
 
-    # хвост стрелки
     x_tail = x_tip + ux * length_y
     y_tail = y_tip + uy * length_y
 
-    # текст дальше хвоста
     x_text = x_tail + ux * text_gap_y
     y_text = y_tail + uy * text_gap_y
 
@@ -276,7 +261,6 @@ def _infer_double_labels(labels: Optional[List[str]], n: int) -> Tuple[List[str]
             bottom.append(lab)
     return top, bottom
 
-
 def _plot_groups_points_double_x(
     ax,
     groups,
@@ -300,9 +284,6 @@ def _plot_groups_points_double_x(
     n = len(groups)
     x = np.arange(n, dtype=float)
 
-    # =========================
-    # COLORS: number of colors = graphs per group
-    # =========================
     if group_mode == "fixed":
         if not group_size or group_size < 1:
             raise ValueError("group_size must be >= 1 when group_mode='fixed'")
@@ -315,47 +296,23 @@ def _plot_groups_points_double_x(
     base_colors = plt.rcParams["axes.prop_cycle"].by_key().get("color", ["C0", "C1", "C2", "C3"])
     colors = [base_colors[i % len(base_colors)] for i in range(colors_count)]
 
-    # =========================
-    # points (COLOR) + minmax + median (BLACK)
-    # =========================
     for i, vals in enumerate(groups):
         vals = np.asarray(vals, dtype=float)
         if vals.size == 0:
             continue
 
         point_color = colors[i % colors_count]
-
         offs = np.linspace(-jitter, jitter, num=len(vals)) if len(vals) > 1 else np.array([0.0])
 
-        # --- points: COLORED ---
-        ax.scatter(
-            np.full_like(vals, x[i]) + offs,
-            vals,
-            color=point_color
-        )
+        ax.scatter(np.full_like(vals, x[i]) + offs, vals, color=point_color)
 
-        # --- min–max: ALWAYS BLACK ---
         if show_minmax and len(vals) > 1:
-            ax.vlines(
-                x[i],
-                float(np.min(vals)),
-                float(np.max(vals)),
-                color="black"
-            )
+            ax.vlines(x[i], float(np.min(vals)), float(np.max(vals)), color="black")
 
-        # --- median: ALWAYS BLACK ---
         if show_median:
             med = float(np.median(vals))
-            ax.hlines(
-                med,
-                x[i] - 0.18,
-                x[i] + 0.18,
-                color="black"
-            )
+            ax.hlines(med, x[i] - 0.18, x[i] + 0.18, color="black")
 
-    # =========================
-    # X labels (two rows)
-    # =========================
     ax.set_xticks(x)
     ax.set_xticklabels(bottom_labels)
 
@@ -376,7 +333,6 @@ def _plot_groups_points_double_x(
     ax_bottom2.set_xticks(centers)
     ax_bottom2.set_xticklabels(uniq_top)
 
-    # row labels aligned with tick LABEL rows
     x_left = -0.04
     y_row1 = -0.10
     y_row2 = -0.22
@@ -385,9 +341,6 @@ def _plot_groups_points_double_x(
     ax.text(x_left, y_row2, top_axis_name, transform=ax.transAxes,
             ha="right", va="center", color="black", clip_on=False)
 
-    # =========================
-    # group separators (BLACK)
-    # =========================
     if group_separators and group_mode != "none":
         lw = float(ax.spines["left"].get_linewidth() or 1.0)
         for k in range(group_size, n, group_size):
@@ -397,9 +350,6 @@ def _plot_groups_points_double_x(
     ax.set_ylabel(y_axis_title if y_axis_title else "")
     ax.grid(True, axis="y")
 
-    # =========================
-    # annotations (arrows)
-    # =========================
     if annotate_first_group and level_labels_for_annotation is not None:
         vals0 = np.asarray(groups[0], dtype=float)
         if vals0.size >= 2 and len(level_labels_for_annotation) >= 2 and arrow_first and arrow_last:
@@ -414,10 +364,8 @@ def _plot_groups_points_double_x(
             t_last = str(level_labels_for_annotation[-1])
 
             ax.figure.canvas.draw()
-
             _annotate_point_polar(ax, x_first, y_first, t_first, **arrow_first)
             _annotate_point_polar(ax, x_last, y_last, t_last, **arrow_last)
-
 
 def build_two_figures_from_tables(
     tables: List[Table2D],
@@ -487,7 +435,7 @@ def build_two_figures_from_tables(
 
 
 # =========================
-# Console input (ONLY what you want)
+# Console input
 # =========================
 
 def read_grouping_from_console() -> tuple[str, Optional[int], bool]:
@@ -540,7 +488,7 @@ if __name__ == "__main__":
 
     group_mode, group_size, group_separators = read_grouping_from_console()
 
-    build_two_figures_from_tables(
+    figA, figB = build_two_figures_from_tables(
         tables,
         y_axis_title=y_axis_title,
         scenario_labels=labels,
@@ -554,4 +502,18 @@ if __name__ == "__main__":
         arrows_B_first=ARROWS_B_FIRST,
         arrows_B_last=ARROWS_B_LAST,
     )
+
+    # ===== SAVE HERE (correct place) =====
+    out_dir = r"D:\10_results\plots"
+    os.makedirs(out_dir, exist_ok=True)
+
+    figA_path = os.path.join(out_dir, f"graph_A_idx{graph_idx}.png")
+    figB_path = os.path.join(out_dir, f"graph_B_idx{graph_idx}.png")
+
+    figA.savefig(figA_path, dpi=300)  # без bbox_inches="tight" чтобы не ломало из-за secondary axis
+    figB.savefig(figB_path, dpi=300)
+
+    print(f"Saved: {figA_path}")
+    print(f"Saved: {figB_path}")
+
     plt.show()
