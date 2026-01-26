@@ -22,10 +22,7 @@ GAP_COLS = 1
 
 
 def used_range(ws: Worksheet):
-    """
-    Определяет используемый диапазон по max_row/max_column.
-    Если нужно жёстко ограничить область (например A1:F200) — можно заменить этой логикой.
-    """
+
     return 1, 1, ws.max_row, ws.max_column  # min_row, min_col, max_row, max_col
 
 
