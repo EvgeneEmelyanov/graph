@@ -510,10 +510,10 @@ if __name__ == "__main__":
     figA_path = os.path.join(out_dir, f"graph_A_idx{graph_idx}.png")
     figB_path = os.path.join(out_dir, f"graph_B_idx{graph_idx}.png")
 
-    figA.savefig(figA_path, dpi=300)  # без bbox_inches="tight" чтобы не ломало из-за secondary axis
-    figB.savefig(figB_path, dpi=300)
+    # figA.savefig(figA_path, dpi=300)  # без bbox_inches="tight" чтобы не ломало из-за secondary axis
+    # figB.savefig(figB_path, dpi=300)
 
-    print(f"Saved: {figA_path}")
-    print(f"Saved: {figB_path}")
+    # print(f"Saved: {figA_path}")
+    # print(f"Saved: {figB_path}")
 
     plt.show()

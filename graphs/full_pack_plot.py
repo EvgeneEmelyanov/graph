@@ -1,29 +1,31 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from openpyxl import load_workbook
-from matplotlib.colors import LinearSegmentedColormap, Normalize
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # ============================================================
 # 0) НАСТРОЙКИ EXCEL (ОДИН ФАЙЛ)
 # ============================================================
 # FILE  = r"D:\10_results\02_Scopus\5.1.xlsx"
-FILE  = r"D:\10_results\def.xlsx"
+# FILE  = r"D:\10_results\def.xlsx"
+FILE  = r"D:\3.xlsx"
 SHEET = "SWEEP_2"
 
-OUT_PNG = r"C:\Users\Balt_\Desktop\4_surfaces.png"
+OUT_HTML = r"C:\Users\Balt_\Desktop\4_surfaces.html"
+AUTO_OPEN = True  # открыть в браузере после сохранения
 
 # ============================================================
-# 1) ВЫБОР НАБОРА ДАННЫХ (1/2/3) — как в твоём примере
+# 1) ВЫБОР НАБОРА ДАННЫХ (1/2/3)
 # ============================================================
-DATASET = 2  # <-- меняй: 1, 2 или 3
+DATASET = 3  # <-- меняй: 1, 2 или 3
 
 X_ROW = 2
-TRI_LIMIT = 1.0000001  # не используется в rect, оставлен для совместимости
+TRI_LIMIT = 1.0000001  # для triangle
 
 if DATASET == 1:
     Y_START_ROW, Y_END_ROW = 3, 9
     X_START_COL, X_END_COL = 2, 12
-    # 4 блока Z (строки в Excel): [Fuel, Hours, ENS, Costs] — порядок как в твоём 2x2
+    # 4 блока Z (строки в Excel): [Fuel, Hours, ENS, Costs]
     Z_BLOCKS = [(3, 9), (14, 20), (25, 31), (36, 42)]
     SHAPE_MODE = "rect"
 elif DATASET == 2:
@@ -34,13 +36,14 @@ elif DATASET == 2:
 elif DATASET == 3:
     Y_START_ROW, Y_END_ROW = 3, 13
     X_START_COL, X_END_COL = 2, 12
-    Z_BLOCKS = [(3, 13), (18, 28), (33, 43), (48, 58)]
-    SHAPE_MODE = "triangle"  # если вдруг нужно, оставлено как в твоём коде
+    Z_BLOCKS = [(3, 13), (33, 43), (48, 58), (63, 73)]
+    SHAPE_MODE = "triangle"
 else:
     raise ValueError("DATASET должен быть 1, 2 или 3")
 
 # ============================================================
-# 2) УГЛЫ ОБЗОРА (ОСТАВЛЯЕМ КАК СЕЙЧАС)
+# 2) "УГЛЫ ОБЗОРА" — для Plotly это камера. Сохраняем смысл:
+#    elev/azim -> camera eye (приближенно).
 # ============================================================
 VIEW_ANGLES = {
     "fuel":  dict(elev=22, azim=65),
@@ -49,13 +52,21 @@ VIEW_ANGLES = {
     "costs": dict(elev=22, azim=35),
 }
 
+def view_to_camera(elev_deg, azim_deg, r=1.9):
+    # Приближенная конверсия (matplotlib elev/azim -> plotly camera eye)
+    elev = np.deg2rad(elev_deg)
+    azim = np.deg2rad(azim_deg)
+    x = r * np.cos(elev) * np.cos(azim)
+    y = r * np.cos(elev) * np.sin(azim)
+    z = r * np.sin(elev)
+    return dict(eye=dict(x=float(x), y=float(y), z=float(z)))
+
 # ============================================================
-# 3) ЦВЕТА (ОСТАВЛЯЕМ "ЭТАЛОННЫЙ" СТИЛЬ)
-#    - facecolors по cmap(norm(Z))
-#    - shade=False (цвета строго по Z, без освещения)
+# 3) ЦВЕТОВАЯ ШКАЛА (аналог твоего custom cmap)
 # ============================================================
 colors = ["limegreen", "yellowgreen", "yellow", "orange", "red", "maroon"]
-cmap = LinearSegmentedColormap.from_list("custom_scale", colors, N=256)
+# Plotly colorscale: список [позиция 0..1, цвет]
+PLOTLY_COLORSCALE = [[i / (len(colors) - 1), c] for i, c in enumerate(colors)]
 
 # ============================================================
 # 4) ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ЧТЕНИЯ ИЗ EXCEL
@@ -86,7 +97,6 @@ def _cell_to_label(v):
 
 def read_axis_labels(ws):
     """
-    Как в твоём большом коде:
     X-лейбл из (row=1, col=2), Y-лейбл из (row=1, col=3).
     """
     xlab = _cell_to_label(ws.cell(row=1, column=2).value)
@@ -95,7 +105,6 @@ def read_axis_labels(ws):
 
 def get_z_label(ws, z_start_row):
     """
-    Как в твоём большом коде:
     - если блок начинается с Y_START_ROW -> Z из A1
     - иначе Z из (row=z_start_row-2, col=X_START_COL-1)
     """
@@ -131,7 +140,6 @@ def read_block(ws, z_start_row, z_end_row):
         for j, col in enumerate(range(X_START_COL, X_END_COL + 1)):
             Z[i, j] = to_float(ws.cell(row=row, column=col).value)
 
-    # (на случай triangle-режима)
     if SHAPE_MODE == "triangle":
         Xg, Yg = np.meshgrid(x, y)
         mask = np.isnan(Z) | ((Xg + Yg) > TRI_LIMIT)
@@ -156,59 +164,85 @@ ws = wb[SHEET]
 
 X_AXIS_TITLE, Y_AXIS_TITLE = read_axis_labels(ws)
 
-# Читаем 4 блока в порядке: Fuel, Hours, ENS, Costs
 (x_vals, y_vals, Z_fuel,  zlab_fuel)  = read_block(ws, *Z_BLOCKS[0])
 (_,      _,      Z_hours, zlab_hours) = read_block(ws, *Z_BLOCKS[1])
 (_,      _,      Z_ens,   zlab_ens)   = read_block(ws, *Z_BLOCKS[2])
 (_,      _,      Z_costs, zlab_costs) = read_block(ws, *Z_BLOCKS[3])
 
-# Сетка для текущего набора
 X, Y = np.meshgrid(x_vals, y_vals)
 
 # ============================================================
-# 6) "ЭТАЛОННАЯ" ОТРИСОВКА (ОФОРМЛЕНИЕ КАК СЕЙЧАС)
+# 6) СБОРКА 2×2 В HTML (Plotly)
 # ============================================================
-def plot_surface_flatcolors(ax, Z, title, zlabel, view):
-    Z = np.asarray(Z, dtype=float)
-    norm = Normalize(vmin=np.nanmin(Z), vmax=np.nanmax(Z))
+fig = make_subplots(
+    rows=2, cols=2,
+    specs=[[{"type": "surface"}, {"type": "surface"}],
+           [{"type": "surface"}, {"type": "surface"}]],
+    horizontal_spacing=0.02,
+    vertical_spacing=0.05,
+    subplot_titles=(
+        "Экономические затраты",
+        "Недоотпуск энергии",
+        "Расход топлива",
+        "Моточасы ДГУ",
+    )
+)
 
-    ax.plot_surface(
-        X, Y, Z,
-        facecolors=cmap(norm(Z)),
-        rstride=1, cstride=1,
-        linewidth=0.3,
-        edgecolor="black",
-        antialiased=True,
-        shade=False,  # <-- фиксирует стиль (без освещения)
+def add_surface(row, col, Z, zlabel, show_colorbar=False):
+    Z = np.asarray(Z, dtype=float)
+    zmin = float(np.nanmin(Z))
+    zmax = float(np.nanmax(Z))
+
+    surface = go.Surface(
+        x=X, y=Y, z=Z,
+        colorscale=PLOTLY_COLORSCALE,
+        cmin=zmin, cmax=zmax,
+        showscale=show_colorbar,
+        colorbar=dict(
+            title=zlabel or "Z",
+            len=0.45
+        ) if show_colorbar else None,
+        hovertemplate=(
+            f"{X_AXIS_TITLE}: %{{x}}<br>"
+            f"{Y_AXIS_TITLE}: %{{y}}<br>"
+            f"{(zlabel or 'Z')}: %{{z}}<extra></extra>"
+        )
+    )
+    fig.add_trace(surface, row=row, col=col)
+
+# Если хочешь одну общую шкалу — можно поставить show_colorbar=True только у первого
+add_surface(1, 1, Z_fuel,  zlab_fuel  or "Z", show_colorbar=True)
+add_surface(1, 2, Z_hours, zlab_hours or "Z", show_colorbar=False)
+add_surface(2, 1, Z_ens,   zlab_ens   or "Z", show_colorbar=False)
+add_surface(2, 2, Z_costs, zlab_costs or "Z", show_colorbar=False)
+
+# ============================================================
+# 7) ОСИ + КАМЕРА ДЛЯ КАЖДОГО SUBPLOT (scene/scene2/scene3/scene4)
+# ============================================================
+def scene_layout(x_title, y_title, z_title, view_key):
+    cam = view_to_camera(VIEW_ANGLES[view_key]["elev"], VIEW_ANGLES[view_key]["azim"])
+    return dict(
+        xaxis=dict(title=x_title, backgroundcolor="white", gridcolor="lightgray", zerolinecolor="lightgray"),
+        yaxis=dict(title=y_title, backgroundcolor="white", gridcolor="lightgray", zerolinecolor="lightgray"),
+        zaxis=dict(title=z_title, backgroundcolor="white", gridcolor="lightgray", zerolinecolor="lightgray"),
+        camera=cam
     )
 
-    ax.set_title(title, fontsize=12, y=1)
-    ax.set_xlabel(X_AXIS_TITLE, fontsize=10)
-    ax.set_ylabel(Y_AXIS_TITLE, fontsize=10)
-    ax.set_zlabel(zlabel, fontsize=10, rotation=180)
-    ax.view_init(**view)
+fig.update_layout(
+    template="plotly_white",
+    width=1300,
+    height=1100,
+    margin=dict(l=10, r=10, t=70, b=10),
+    scene = scene_layout(X_AXIS_TITLE, Y_AXIS_TITLE, (zlab_fuel  or "Z"), "fuel"),
+    scene2= scene_layout(X_AXIS_TITLE, Y_AXIS_TITLE, (zlab_hours or "Z"), "hours"),
+    scene3= scene_layout(X_AXIS_TITLE, Y_AXIS_TITLE, (zlab_ens   or "Z"), "ens"),
+    scene4= scene_layout(X_AXIS_TITLE, Y_AXIS_TITLE, (zlab_costs or "Z"), "costs"),
+)
 
 # ============================================================
-# 7) ФИГУРА 2×2 (РАСПОЛОЖЕНИЕ КАК СЕЙЧАС)
+# 8) СОХРАНЕНИЕ HTML + ОТКРЫТИЕ В БРАУЗЕРЕ
 # ============================================================
-fig = plt.figure(figsize=(13, 11), dpi=300)
-gs = fig.add_gridspec(2, 2, wspace=0.0, hspace=0.0)
+fig.write_html(OUT_HTML, auto_open=AUTO_OPEN, include_plotlyjs="cdn")
 
-ax1 = fig.add_subplot(gs[0, 0], projection="3d")
-ax2 = fig.add_subplot(gs[0, 1], projection="3d")
-ax3 = fig.add_subplot(gs[1, 0], projection="3d")
-ax4 = fig.add_subplot(gs[1, 1], projection="3d")
-
-# Заголовки оставлены как в твоём 2×2 примере; zlabel берём из Excel (если пусто — ставим дефолт)
-plot_surface_flatcolors(ax1, Z_fuel,  "Экономические затраты",        (zlab_fuel  or "Z"), VIEW_ANGLES["fuel"])
-plot_surface_flatcolors(ax2, Z_hours, "Недоотпуск энергии",          (zlab_hours or "Z"), VIEW_ANGLES["hours"])
-plot_surface_flatcolors(ax3, Z_ens,   "Расход топлива",                   (zlab_ens   or "Z"), VIEW_ANGLES["ens"])
-plot_surface_flatcolors(ax4, Z_costs, "Моточасы ДГУ", (zlab_costs or "Z"), VIEW_ANGLES["costs"])
-
-fig.patch.set_facecolor("white")
-for ax in (ax1, ax2, ax3, ax4):
-    ax.set_facecolor("white")
-
-plt.savefig(OUT_PNG, dpi=300, facecolor=fig.get_facecolor())
-print("Готово:", OUT_PNG)
+print("Готово:", OUT_HTML)
 print(f"FILE={FILE} | SHEET={SHEET} | DATASET={DATASET} | SHAPE_MODE={SHAPE_MODE}")
