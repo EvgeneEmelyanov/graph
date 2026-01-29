@@ -8,18 +8,30 @@ import matplotlib.pyplot as plt
 
 min_by_current = pd.DataFrame(
     {
-        ("50%", "SS"): [33.40, 33.40, 33.40, 33.40, 33.40],
-        ("50%", "D") : [33.13, 33.13, 33.13, 33.13, 33.13],
-        ("100%","SS"): [32.59, 32.59, 32.59, 32.59, 32.59],
-        ("100%","D") : [32.38, 32.38, 32.38, 32.38, 32.38],
-        ("200%","SS"): [32.18, 31.95, 31.74, 31.60, 31.60],
-        ("200%","D") : [32.00, 31.67, 31.46, 31.38, 31.37],
-        ("400%","SS"): [34.17, 32.13, 31.88, 31.77, 31.77],
-        ("400%","D") : [34.02, 31.94, 31.71, 31.60, 31.60],
+        #     ("100%", "SS"): [39.35, 86.55, 112.49, 118.48, 122.49, 125.06, 125.16, 125.28, 125.41, 125.54, 125.58],
+        #     ("100%", "D"): [35.43, 58.41, 78.54, 95.14, 106.82, 110.73, 111.22, 111.69, 112.12, 112.45, 112.67],
+        #
+        #     ("150%", "SS"): [30.93, 31.50, 31.61, 31.62, 31.62, 32.11, 32.21, 32.19, 32.18, 32.17, 32.17],
+        #     ("150%", "D"): [30.80, 31.29, 31.38, 31.45, 31.51, 31.96, 32.04, 32.02, 32.03, 32.03, 32.04],
+        #
+        #     ("200%", "SS"): [34.56, 35.03, 35.04, 35.04, 35.04, 35.73, 35.83, 35.74, 35.73, 35.72, 36.32],
+        #     ("200%", "D"): [34.56, 35.01, 35.01, 35.01, 35.01, 35.70, 35.80, 35.72, 35.72, 35.72, 36.33],
+
+        ("100%", "SS"): [621.37, 636.29, 636.28, 636.29, 636.29, 636.29, 636.29, 636.29, 636.29, 636.29, 636.29],
+        ("100%", "D"): [621.36, 636.29, 636.28, 636.29, 636.28, 636.30, 636.30, 636.30, 636.30, 636.30, 636.30],
+
+        ("150%", "SS"): [649.87, 665.63, 665.64, 665.65, 665.66, 690.19, 688.22, 683.57, 683.57, 683.57, 683.57],
+        ("150%", "D"): [649.87, 665.68, 665.68, 665.67, 665.68, 690.17, 688.26, 683.59, 683.59, 683.59, 683.59],
+
+        ("200%", "SS"): [660.36, 676.01, 676.00, 676.00, 676.00, 703.84, 702.08, 697.02, 697.02, 697.01, 714.20],
+        ("200%", "D"): [660.39, 676.00, 676.00, 676.01, 676.00, 703.85, 702.07, 697.03, 697.02, 697.02, 714.22],
+
     }
+
 )
 min_by_current.columns = pd.MultiIndex.from_tuples(min_by_current.columns, names=["WT", "Scheme"])
-min_by_current.index = [f"I{i+1}" for i in range(len(min_by_current))]
+min_by_current.index = [f"I{i + 1}" for i in range(len(min_by_current))]
+
 
 # -----------------------------
 # "НАШЕ" ОФОРМЛЕНИЕ: двойные подписи X + разделители групп + чёрные линии
@@ -33,23 +45,24 @@ def _infer_double_labels_from_multiindex(df: pd.DataFrame, x_order, schemes):
             bottom_labels.append(str(sch))
     return top_labels, bottom_labels
 
+
 def plot_points_with_median_double_x(
-    ax,
-    df: pd.DataFrame,
-    title: str,
-    y_label: str = "LCOE, руб/кВт·ч",
-    x_order=("50%","100%","200%","400%"),
-    schemes=("SS","D"),
-    jitter=0.06,
-    show_median=True,
-    show_minmax=True,
-    # grouping:
-    group_mode="fixed",   # "fixed" | "none"
-    group_size=2,
-    group_separators=True,
-    # captions
-    top_axis_name="Мощность ВЭУ",
-    bottom_axis_name="Схема",
+        ax,
+        df: pd.DataFrame,
+        title: str,
+        y_label: str = "LCOE, руб/кВт·ч",
+        x_order=("100%", "150%", "200%"),
+        schemes=("SS", "D"),
+        jitter=0.06,
+        show_median=True,
+        show_minmax=True,
+        # grouping:
+        group_mode="fixed",  # "fixed" | "none"
+        group_size=2,
+        group_separators=True,
+        # captions
+        top_axis_name="Мощность ВЭУ",
+        bottom_axis_name="Схема",
 ):
     # ---------- DATA ----------
     groups = []
@@ -140,6 +153,7 @@ def plot_points_with_median_double_x(
     ax.set_ylabel(y_label)
     ax.grid(True, axis="y")
 
+
 # -----------------------------
 # ОДИН ГРАФИК
 # -----------------------------
@@ -151,7 +165,7 @@ plot_points_with_median_double_x(
     title="",
     y_label="LCOE, руб/кВт·ч",
     group_mode="fixed",
-    group_size=2,          # по умолчанию 2
+    group_size=2,  # по умолчанию 2
     group_separators=True,
     top_axis_name="",
     bottom_axis_name="",

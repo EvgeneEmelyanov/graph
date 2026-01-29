@@ -86,10 +86,14 @@ def parse_format2(lines: List[str]) -> Dict[str, Dict[str, Tuple[float, float]]]
     return data
 
 
-def plot_sobol_single(rows: List[Tuple[str, float, float]], title="Sobol indices"):
+def plot_sobol_single(rows: List[Tuple[str, float, float]], title=""):
     names = [r[0] for r in rows]
-    S = np.array([r[1] for r in rows]) * 100.0
-    ST = np.array([r[2] for r in rows]) * 100.0
+    S = np.array([r[1] for r in rows]) * 1.0
+    ST = np.array([r[2] for r in rows]) * 1.0
+
+    # если число меньше 0 — приравниваем к 0
+    S = np.maximum(S, 0.0)
+    ST = np.maximum(ST, 0.0)
 
     n = len(rows)
     x = np.arange(n)
@@ -106,12 +110,9 @@ def plot_sobol_single(rows: List[Tuple[str, float, float]], title="Sobol indices
     ax.legend()
     ax.grid(axis="y", alpha=0.3)
 
-    ymin = min(S.min(), ST.min())
     ymax = max(S.max(), ST.max())
-    pad = max((ymax - ymin) * 0.05, 0.5)
-
-    # более корректный ylim при отрицательных значениях
-    ax.set_ylim(ymin - pad, ymax + pad)
+    pad = max(ymax * 0.05, 0.5)
+    ax.set_ylim(0, ymax + pad)
 
     # подписи параметров
     for i, name in enumerate(names):
@@ -130,7 +131,7 @@ def plot_sobol_single(rows: List[Tuple[str, float, float]], title="Sobol indices
     plt.show()
 
 
-def plot_sobol_multi(data: Dict[str, Dict[str, Tuple[float, float]]], title_prefix="Sobol indices"):
+def plot_sobol_multi(data: Dict[str, Dict[str, Tuple[float, float]]], title_prefix=""):
     # общий порядок параметров
     params = list(data.keys())
 
@@ -159,7 +160,7 @@ def main():
         default="auto",
         help="auto: определить по первой строке; format1: 'NAME S=.. ST=..'; format2: таблица с колонками S_LCOE/ST_LCOE/...",
     )
-    parser.add_argument("--title", default="Sobol indices", help="Заголовок/префикс заголовка графиков")
+    parser.add_argument("--title", default="", help="Заголовок/префикс заголовка графиков")
     args = parser.parse_args()
 
     lines = read_lines_from_console()
