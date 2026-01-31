@@ -14,7 +14,7 @@ DST_SHEET = "SWEEP_2"
 DEFAULT_SRC_DIR = r"D:\\"
 DEFAULT_OUT_PATH = r"D:\comb.xlsx"
 
-ORDER = ["SN1", "SN2", "SS", "D"]
+ORDER = ["ff", "ff2", "ft", "ft2", "tt", "tt2"]
 GAP_COLS = 1
 
 

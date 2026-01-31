@@ -15,14 +15,15 @@ from openpyxl.worksheet.worksheet import Worksheet
 # DEFAULTS (EDIT THESE ONCE)
 # =========================
 
-DEFAULT_EXCEL_PATH = r"D:\10_results\comb.xlsx"
+# DEFAULT_EXCEL_PATH = r"D:\10_results\comb.xlsx"
+DEFAULT_EXCEL_PATH = r"D:\comb.xlsx"
 DEFAULT_SHEET = "SWEEP_2"
 
-DEFAULT_BLOCK_RANGE = "A2:AA18"
+DEFAULT_BLOCK_RANGE = "A2:BY13"
 DEFAULT_GAP_ROWS = 3
 
 DEFAULT_SCENARIO_LABELS: Optional[List[str]] = [
-    "SN1", "SN2", "SS", "D"
+    "SS-0", "D-0", "SS-II", "D-II", "SS-A", "D-A"
 ]
 USE_DEFAULT_LABELS = True
 
