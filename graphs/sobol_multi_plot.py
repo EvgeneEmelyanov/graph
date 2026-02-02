@@ -9,7 +9,7 @@ from matplotlib.colors import LinearSegmentedColormap
 # НАСТРОЙКИ (МЕНЯТЬ ЗДЕСЬ)
 # =====================================================
 # Варианты:
-# 1) "triptych" — 1..3 теплокарты ST рядом (по числу введённых схем) + таблицы статистик сверху
+# 1) "triptych" — 1..N теплокарт ST рядом (по числу введённых схем) + таблицы статистик сверху
 # 2) "bars"     — для каждой метрики отдельный график: сгруппированные горизонтальные бары ST по введённым схемам
 COMPARE_MODE = "triptych"   # "triptych" | "bars"
 
@@ -17,7 +17,7 @@ SCHEMES_ORDER = ["SN", "SS", "D", "H"]
 
 # Подписи схем:
 # - для двухстрочных: две строки рисуются на фиксированных высотах
-# - для однострочных: строка рисуется по центру между двумя высотами (как ты хотел)
+# - для однострочных: строка рисуется по центру между двумя высотами
 SCHEME_TITLES = {
     "SN": ["Одиночная", "несекционированная"],
     "SS": ["Одиночная", "секционированная"],
@@ -25,7 +25,11 @@ SCHEME_TITLES = {
     "H": ["Хуевая"],
 }
 
-SORT_PARAMS_BY = "base_total_st"  # "base_total_st" | "max_total_st" | "none"
+# Сортировка параметров:
+# "avg_lcoe_st" — по среднему влиянию на LCOE (ST_LCOE), усреднение по введённым схемам (по умолчанию)
+# "avg_lcoe_s"  — по среднему влиянию на LCOE (S_LCOE), усреднение по введённым схемам
+# "none"        — без сортировки
+SORT_PARAMS_BY = "avg_lcoe_st"  # "avg_lcoe_st" | "avg_lcoe_s" | "none"
 
 # ВАЖНО: верхнюю подпись (suptitle) убираем полностью — TITLE_PREFIX не используется в triptych
 TITLE_PREFIX = "Sobol: сравнение схем"
@@ -49,8 +53,6 @@ WHITE_ORANGE = LinearSegmentedColormap.from_list(
 
 # =====================================================
 
-# Пример:
-# LCOE: var=12481,5 std=111,720 range=[29,0663..818,510]
 METRIC_STATS_RE = re.compile(
     r"^\s*(?P<metric>LCOE|ENS|Fuel|Moto)\s*:\s*"
     r"var=(?P<var>[^ ]+)\s+"
@@ -72,11 +74,11 @@ def parse_number(s: str) -> float:
 
 def read_lines_from_console() -> List[str]:
     """
-    Вставляешь данные для 1..3 схем подряд (SN/SS/D),
+    Вставляешь данные для 1..N схем подряд (SN/SS/D/H...),
     затем ОДНА пустая строка — конец ввода.
-    ВАЖНО: строка с именем схемы должна быть отдельной строкой: SN или SS или D
+    ВАЖНО: строка с именем схемы должна быть отдельной строкой.
     """
-    print("Вставьте данные (SN/SS/D), затем ОДНА пустая строка — конец ввода.\n")
+    print("Вставьте данные (SN/SS/D/H...), затем ОДНА пустая строка — конец ввода.\n")
     lines = []
     while True:
         try:
@@ -160,16 +162,6 @@ def parse_format2_table(lines_table: List[str]) -> Dict[str, Dict[str, Tuple[flo
 def parse_multi_scheme_input(
     lines: List[str],
 ) -> Dict[str, Tuple[Dict[str, Dict[str, float]], Dict[str, Dict[str, Tuple[float, float]]]]]:
-    """
-    Вход: блоки вида (можно 1-2-3 блока):
-      SN
-      ...
-      SS
-      ...
-      D
-      ...
-    Возвращает: schemes[scheme] = (stats, data)
-    """
     blocks: Dict[str, List[str]] = {}
     current_scheme: Optional[str] = None
 
@@ -184,7 +176,7 @@ def parse_multi_scheme_input(
         blocks[current_scheme].append(line)
 
     if not blocks:
-        raise ValueError("Не найдено ни одной схемы. Добавьте строку 'SN' или 'SS' или 'D' перед блоком данных.")
+        raise ValueError("Не найдено ни одной схемы. Добавьте строку 'SN' или 'SS' или 'D' (и т.д.) перед блоком данных.")
 
     parsed: Dict[str, Tuple[Dict[str, Dict[str, float]], Dict[str, Dict[str, Tuple[float, float]]]]] = {}
     for scheme in SCHEMES_ORDER:
@@ -205,10 +197,6 @@ def parse_multi_scheme_input(
 # Formatting helpers for stats table (σ/min/max)
 # -------------------------
 def fmt_1dp_trim(x: float) -> str:
-    """
-    1 знак после запятой, но если ,0 — не показываем.
-    Десятичный разделитель: запятая.
-    """
     s = f"{x:.1f}"
     if s.endswith(".0"):
         s = s[:-2]
@@ -216,12 +204,6 @@ def fmt_1dp_trim(x: float) -> str:
 
 
 def scale_stat(metric: str, x: float) -> float:
-    """
-    Масштабирование статистики:
-      Fuel -> /1e6
-      Moto -> /1e3
-      остальное без изменений
-    """
     if metric == "Fuel":
         return x / 1e6
     if metric == "Moto":
@@ -230,12 +212,6 @@ def scale_stat(metric: str, x: float) -> float:
 
 
 def fmt_stat(metric: str, x: float) -> str:
-    """
-    Формат для σ/min/max:
-      - 1 знак после запятой (и обрезать ,0)
-      - Fuel делим на 1e6, Moto на 1e3
-      - без экспоненты
-    """
     return fmt_1dp_trim(scale_stat(metric, x))
 
 
@@ -247,11 +223,6 @@ def zeroize(v: float) -> float:
 
 
 def fmt_cell(v: float) -> str:
-    """
-    Подписи в ячейках теплокарты:
-    - если v <= 0 или почти 0 -> "0"
-    - иначе -> 2 знака после точки
-    """
     v = zeroize(v)
     if v == 0.0:
         return "0"
@@ -282,7 +253,7 @@ def build_stats_table_cells(
 
 
 def figure_size_for_labels(params: List[str], ncols: int) -> Tuple[float, float]:
-    # ОСТАВЛЕНО КАК В ТВОЁМ КОДЕ (масштабирование/ширина и т.д.)
+    # Сохраняем твоё масштабирование/ширину
     max_len = max((len(p) for p in params), default=10)
     width = 10.5
     if max_len >= MAX_PARAM_LABEL_LEN_FOR_WIDE:
@@ -293,7 +264,6 @@ def figure_size_for_labels(params: List[str], ncols: int) -> Tuple[float, float]
 
 
 def union_params(parsed: Dict[str, Tuple[Dict, Dict]]) -> List[str]:
-    # объединение параметров по введённым схемам
     s = set()
     for scheme in parsed.keys():
         _, data = parsed[scheme]
@@ -320,57 +290,45 @@ def sort_params(
     parsed: Dict[str, Tuple[Dict, Dict]],
     params: List[str],
     mode: str,
-    base_scheme: str,
 ) -> List[str]:
+    """
+    Сортировка по влиянию на LCOE:
+      - avg_lcoe_st: сортируем по среднему ST_LCOE по всем введённым схемам
+      - avg_lcoe_s:  сортируем по среднему S_LCOE  по всем введённым схемам
+      - none: без сортировки
+    Негативные/почти нулевые значения считаем 0 (через zeroize).
+    """
     if mode == "none":
         return params
 
-    metrics = EXPECTED_METRICS
+    if mode not in ("avg_lcoe_st", "avg_lcoe_s"):
+        raise ValueError(f"Unknown SORT_PARAMS_BY={mode}")
 
-    # если базовая схема не введена — берём первую введённую в порядке SCHEMES_ORDER
-    if base_scheme not in parsed:
-        for s in SCHEMES_ORDER:
-            if s in parsed:
-                base_scheme = s
-                break
+    use_total = (mode == "avg_lcoe_st")  # True -> ST, False -> S
+    schemes = list(parsed.keys())
+    if not schemes:
+        return params
 
-    if mode == "base_total_st":
-        _, base_data = parsed[base_scheme]
-        scores = []
-        for p in params:
-            total = 0.0
-            if p in base_data:
-                for m in metrics:
-                    total += max(base_data[p][m][1], 0.0)
-            scores.append((p, total))
-        scores.sort(key=lambda x: x[1], reverse=True)
-        return [p for p, _ in scores]
+    scored = []
+    for p in params:
+        acc = 0.0
+        cnt = 0
+        for scheme in schemes:
+            _, d = parsed[scheme]
+            if p not in d or "LCOE" not in d[p]:
+                continue
+            s_val, st_val = d[p]["LCOE"]
+            v = st_val if use_total else s_val
+            acc += zeroize(v)
+            cnt += 1
+        mean_v = (acc / cnt) if cnt > 0 else 0.0
+        scored.append((p, mean_v))
 
-    if mode == "max_total_st":
-        scores = []
-        for p in params:
-            best = 0.0
-            for scheme in parsed.keys():
-                _, d = parsed[scheme]
-                total = 0.0
-                if p in d:
-                    for m in metrics:
-                        total += max(d[p][m][1], 0.0)
-                best = max(best, total)
-            scores.append((p, best))
-        scores.sort(key=lambda x: x[1], reverse=True)
-        return [p for p, _ in scores]
-
-    raise ValueError(f"Unknown SORT_PARAMS_BY={mode}")
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [p for p, _ in scored]
 
 
 def draw_scheme_title(ax, lines: List[str], fontsize: int):
-    """
-    Заголовки над таблицами:
-      - если 2 строки: фиксированные уровни y1 и y2
-      - если 1 строка: по центру между y1 и y2
-    Это даёт "Двойная" ровно между строками двухстрочных заголовков.
-    """
     ax.set_title("")  # отключаем стандартный title
 
     y1 = 1.10
@@ -393,13 +351,12 @@ def draw_scheme_title(ax, lines: List[str], fontsize: int):
 def plot_triptych(parsed: Dict[str, Tuple[Dict, Dict]]):
     metrics = EXPECTED_METRICS
 
-    # 1..3 схемы в порядке SCHEMES_ORDER
+    # 1..N схемы в порядке SCHEMES_ORDER
     schemes = [s for s in SCHEMES_ORDER if s in parsed]
     ncols = len(schemes)
 
     params = union_params(parsed)
-    # сортировка: базовая = SN если введена, иначе первая введенная
-    params = sort_params(parsed, params, SORT_PARAMS_BY, base_scheme="SN")
+    params = sort_params(parsed, params, SORT_PARAMS_BY)
 
     # общий vmax по введённым схемам
     vmax = 0.0
@@ -437,7 +394,6 @@ def plot_triptych(parsed: Dict[str, Tuple[Dict, Dict]]):
         tbl.set_fontsize(FONT_SMALL)
         tbl.scale(1.0, 1.25)
 
-        # Рисуем заголовки как 1/2 строки на фиксированных уровнях
         title_lines = SCHEME_TITLES.get(scheme, [scheme])
         draw_scheme_title(ax_t, title_lines, fontsize=FONT_BASE)
 
@@ -460,7 +416,6 @@ def plot_triptych(parsed: Dict[str, Tuple[Dict, Dict]]):
             ax.set_yticks(np.arange(len(params)))
             ax.set_yticklabels([])
 
-        # подписи "Параметр" и "Метрика" убраны
         ax.tick_params(axis="x", pad=6)
         ax.tick_params(axis="y", pad=6)
 
@@ -494,9 +449,8 @@ def plot_bars(parsed: Dict[str, Tuple[Dict, Dict]]):
     schemes = [s for s in SCHEMES_ORDER if s in parsed]
 
     params = union_params(parsed)
-    params = sort_params(parsed, params, SORT_PARAMS_BY, base_scheme="SN")
+    params = sort_params(parsed, params, SORT_PARAMS_BY)
 
-    # сгруппированные горизонтальные бары: по числу введенных схем
     for metric in metrics:
         fig_h = max(5.0, len(params) * 0.45 + 1.8)
         fig_w = 11.5
@@ -504,7 +458,6 @@ def plot_bars(parsed: Dict[str, Tuple[Dict, Dict]]):
 
         y = np.arange(len(params))
 
-        # ширина группы фиксирована как раньше для 3 схем; для 1-2 схем подстраиваем offsets
         bar_h = 0.22 if len(schemes) >= 3 else (0.26 if len(schemes) == 2 else 0.32)
         offsets = {}
         if len(schemes) == 1:
@@ -513,7 +466,11 @@ def plot_bars(parsed: Dict[str, Tuple[Dict, Dict]]):
             offsets[schemes[0]] = -bar_h / 2
             offsets[schemes[1]] = +bar_h / 2
         else:
-            offsets = {"SN": -bar_h, "SS": 0.0, "D": +bar_h}
+            # если схем >=3, раскладываем равномерно вокруг 0
+            idx = {s: i for i, s in enumerate(schemes)}
+            mid = (len(schemes) - 1) / 2.0
+            for s in schemes:
+                offsets[s] = (idx[s] - mid) * bar_h
 
         vmax = 0.0
         for scheme in schemes:
