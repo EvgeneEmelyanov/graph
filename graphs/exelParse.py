@@ -12,11 +12,12 @@ SRC_SHEET = "SWEEP_2"
 DST_SHEET = "SWEEP_2"
 
 DEFAULT_SRC_DIR = r"D:\\"
-DEFAULT_OUT_PATH = r"D:\comb.xlsx"
+DEFAULT_OUT_PATH = r"D:\comb2.xlsx"
 
 # ORDER = ["1", "2", "3", "4", "22", "5", "6", "7", "8", "11"]
 # ORDER = ["2_1", "2_2", "4_1", "4_2", "6_1", "6_2", "8_1", "8_2"]
-ORDER = ["0", "25", "50", "75", "100", "125"]
+# ORDER = ["0", "50", "100", "200", "50+", "100+", "200+"]
+ORDER = ["1124", "1125"]
 
 GAP_COLS = 1
 
@@ -26,8 +27,8 @@ GAP_COLS = 1
 # ВАЖНО: max_col = номер столбца (A=1, B=2, ..., V=22)
 FIX_MIN_ROW = 1
 FIX_MIN_COL = 1
-FIX_MAX_ROW = 310
-FIX_MAX_COL = 10
+FIX_MAX_ROW = 190
+FIX_MAX_COL = 23
 # ============================================================
 
 
