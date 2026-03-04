@@ -3,9 +3,9 @@ from openpyxl import load_workbook
 
 # НАСТРОЙКИ: ФАЙЛЫ
 files = [
-    r"D:\10_results\02_Scopus\4.1.xlsx",
-    r"D:\10_results\02_Scopus\5.1.xlsx",
-    r"D:\10_results\02_Scopus\6.1.xlsx",
+    r"D:\10_results\a\ff.xlsx",
+    r"D:\10_results\a\ft.xlsx",
+    r"D:\10_results\a\tt.xlsx",
 ]
 sheet = "SWEEP_2"
 
@@ -26,9 +26,9 @@ if DATASET == 1:
     Z_BLOCKS = [(3, 9), (14, 20), (25, 31), (36, 42)]
     SHAPE_MODE = "rect"
 elif DATASET == 2:
-    Y_START_ROW, Y_END_ROW = 3, 12
+    Y_START_ROW, Y_END_ROW = 3, 13
     X_START_COL, X_END_COL = 2, 12
-    Z_BLOCKS = [(3, 12), (17, 26), (31, 40), (45, 54)]
+    Z_BLOCKS = [(3, 13), (33, 43), (48, 58), (63, 73)]
     SHAPE_MODE = "rect"
 elif DATASET == 3:
     Y_START_ROW, Y_END_ROW = 3, 13

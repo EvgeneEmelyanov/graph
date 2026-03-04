@@ -19,16 +19,16 @@ from openpyxl.worksheet.worksheet import Worksheet
 DEFAULT_EXCEL_PATH = r"D:\comb.xlsx"
 DEFAULT_SHEET = "SWEEP_2"
 
-DEFAULT_BLOCK_RANGE = "A2:BY13"
+DEFAULT_BLOCK_RANGE = "A2:CQ6"
 DEFAULT_GAP_ROWS = 3
 
 DEFAULT_SCENARIO_LABELS: Optional[List[str]] = [
-    "SS-0", "D-0", "SS-II", "D-II", "SS-A", "D-A"
+    "SS_2", "D_2", "SS_4", "D_4", "SS_6", "D_6", "SS_8", "D_8"
 ]
 USE_DEFAULT_LABELS = True
 
 TOP_AXIS_NAME = "Мощность ВЭУ"
-BOTTOM_AXIS_NAME = "Схема"
+BOTTOM_AXIS_NAME = ""
 
 ARROWS_A_FIRST = dict(angle_deg=180, length_y=0.3, tip_gap_y=0.00, text_gap_y=0.06, lw=1.0, fontsize=9, box=True)
 ARROWS_A_LAST  = dict(angle_deg=0,   length_y=0.3, tip_gap_y=0.00, text_gap_y=0.06, lw=1.0, fontsize=9, box=True)

@@ -14,23 +14,34 @@ DST_SHEET = "SWEEP_2"
 DEFAULT_SRC_DIR = r"D:\\"
 DEFAULT_OUT_PATH = r"D:\comb.xlsx"
 
-ORDER = ["ff", "ff2", "ft", "ft2", "tt", "tt2"]
+# ORDER = ["1", "2", "3", "4", "22", "5", "6", "7", "8", "11"]
+# ORDER = ["2_1", "2_2", "4_1", "4_2", "6_1", "6_2", "8_1", "8_2"]
+ORDER = ["0", "25", "50", "75", "100", "125"]
+
 GAP_COLS = 1
 
+# ===================== FIXED BLOCK SIZE =====================
+# Задай фиксированный прямоугольник таблицы.
+# Пример: A1:V200  -> (min_row=1, min_col=1, max_row=200, max_col=22)
+# ВАЖНО: max_col = номер столбца (A=1, B=2, ..., V=22)
+FIX_MIN_ROW = 1
+FIX_MIN_COL = 1
+FIX_MAX_ROW = 310
+FIX_MAX_COL = 10
+# ============================================================
 
-def used_range(ws: Worksheet):
-    return 1, 1, ws.max_row, ws.max_column
+
+def used_range_fixed() -> tuple[int, int, int, int]:
+    return FIX_MIN_ROW, FIX_MIN_COL, FIX_MAX_ROW, FIX_MAX_COL
 
 
 # ---------------- values vs styles cell copy ----------------
 
 def copy_cell_value_only(src_value_cell, dst):
-    # только значение (без формул)
     dst.value = src_value_cell.value
 
 
 def copy_cell_style_only(src_style_cell, dst):
-    # только стиль/форматы
     if src_style_cell.has_style:
         dst._style = copy(src_style_cell._style)
     dst.number_format = src_style_cell.number_format
@@ -39,22 +50,7 @@ def copy_cell_style_only(src_style_cell, dst):
     dst.border = copy(src_style_cell.border)
     dst.alignment = copy(src_style_cell.alignment)
     dst.protection = copy(src_style_cell.protection)
-    # комментарий опционально (можно убрать)
     dst.comment = copy(src_style_cell.comment) if src_style_cell.comment else None
-
-
-def copy_dimensions(src_ws: Worksheet, dst_ws: Worksheet, col_offset: int):
-    for col_letter, dim in src_ws.column_dimensions.items():
-        if not dim.width:
-            continue
-        src_col_idx = openpyxl_col_to_int(col_letter)
-        dst_col_idx = src_col_idx + col_offset
-        dst_letter = get_column_letter(dst_col_idx)
-        dst_ws.column_dimensions[dst_letter].width = dim.width
-
-    for row_idx, dim in src_ws.row_dimensions.items():
-        if dim.height:
-            dst_ws.row_dimensions[row_idx].height = dim.height
 
 
 def openpyxl_col_to_int(col_letter: str) -> int:
@@ -65,9 +61,31 @@ def openpyxl_col_to_int(col_letter: str) -> int:
     return n
 
 
+def copy_dimensions(src_ws: Worksheet, dst_ws: Worksheet, col_offset: int):
+    # Копируем ширины только для колонок из фиксированного диапазона
+    for col_idx in range(FIX_MIN_COL, FIX_MAX_COL + 1):
+        src_letter = get_column_letter(col_idx)
+        dim = src_ws.column_dimensions.get(src_letter)
+        if dim and dim.width:
+            dst_letter = get_column_letter(col_idx + col_offset)
+            dst_ws.column_dimensions[dst_letter].width = dim.width
+
+    # Высоты строк — только из фиксированного диапазона
+    for row_idx in range(FIX_MIN_ROW, FIX_MAX_ROW + 1):
+        dim = src_ws.row_dimensions.get(row_idx)
+        if dim and dim.height:
+            dst_ws.row_dimensions[row_idx].height = dim.height
+
+
 def copy_merged_cells(src_ws: Worksheet, dst_ws: Worksheet, col_offset: int):
+    # Копируем только те merged ranges, которые пересекают наш фиксированный блок
     for mr in src_ws.merged_cells.ranges:
         min_col, min_row, max_col, max_row = mr.bounds
+        if max_row < FIX_MIN_ROW or min_row > FIX_MAX_ROW:
+            continue
+        if max_col < FIX_MIN_COL or min_col > FIX_MAX_COL:
+            continue
+
         dst_ws.merge_cells(
             start_row=min_row,
             start_column=min_col + col_offset,
@@ -117,6 +135,8 @@ def copy_conditional_formatting(src_ws: Worksheet, dst_ws: Worksheet, col_offset
         if sqref is None:
             continue
 
+        # Внимание: мы копируем CF как есть, но со сдвигом.
+        # Если CF в источнике шире таблицы, он тоже уедет; это обычно ок.
         dst_sqref = shift_a1_range_cols(str(sqref), col_offset)
         for rule in rules:
             dst_ws.conditional_formatting.add(dst_sqref, copy(rule))
@@ -125,7 +145,7 @@ def copy_conditional_formatting(src_ws: Worksheet, dst_ws: Worksheet, col_offset
 # ---------------- block copy ----------------
 
 def copy_sheet_block(src_ws_values: Worksheet, src_ws_style: Worksheet, dst_ws: Worksheet, col_offset: int):
-    min_row, min_col, max_row, max_col = used_range(src_ws_values)
+    min_row, min_col, max_row, max_col = used_range_fixed()
 
     for r in range(min_row, max_row + 1):
         for c in range(min_col, max_col + 1):
@@ -138,6 +158,8 @@ def copy_sheet_block(src_ws_values: Worksheet, src_ws_style: Worksheet, dst_ws: 
 
     copy_merged_cells(src_ws_style, dst_ws, col_offset)
     copy_dimensions(src_ws_style, dst_ws, col_offset)
+
+    # CF лучше копировать один раз на блок — оставляем как было
     copy_conditional_formatting(src_ws_style, dst_ws, col_offset)
 
 
@@ -150,18 +172,15 @@ def main(src_dir: str, out_path: str):
         out_wb.remove(out_wb.active)
     dst_ws = out_wb.create_sheet(DST_SHEET)
 
+    block_width = (FIX_MAX_COL - FIX_MIN_COL + 1)
     col_offset = 0
-    block_width = None
 
     for name in ORDER:
         src_file = src_dir / f"{name}.xlsx"
         if not src_file.exists():
             raise FileNotFoundError(f"Не найден файл: {src_file}")
 
-        # 1) значения (Excel должен быть уже пересчитан и сохранён!)
         wb_values = load_workbook(src_file, data_only=True)
-
-        # 2) стили/CF/формулы (для оформления и CF)
         wb_style = load_workbook(src_file, data_only=False)
 
         if SRC_SHEET not in wb_values.sheetnames or SRC_SHEET not in wb_style.sheetnames:
@@ -170,16 +189,7 @@ def main(src_dir: str, out_path: str):
         ws_values = wb_values[SRC_SHEET]
         ws_style = wb_style[SRC_SHEET]
 
-        min_row, min_col, max_row, max_col = used_range(ws_values)
-        current_width = (max_col - min_col + 1)
-
-        if block_width is None:
-            block_width = current_width
-        elif current_width != block_width:
-            raise ValueError(
-                f"Размер блока отличается: {src_file.name} имеет ширину {current_width}, ожидалось {block_width}"
-            )
-
+        # Копируем фиксированный прямоугольник, не смотрим на ws.max_column/ws.max_row
         copy_sheet_block(ws_values, ws_style, dst_ws, col_offset)
 
         col_offset += block_width + GAP_COLS
