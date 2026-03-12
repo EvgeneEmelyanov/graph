@@ -11,7 +11,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 # НАСТРОЙКИ ПОЛЬЗОВАТЕЛЯ
 # =========================
 
-EXCEL_PATH = r"D:\comb2.xlsx"
+EXCEL_PATH = r"D:\SS.xlsx"
 SHEET_NAME: Optional[str] = "SWEEP_2"  # None = первый лист
 
 # --- 1) РЕЖИМ ОЦЕНКИ ---
@@ -26,9 +26,7 @@ METRICS = [
 
     # reliability
     "ENS,кВт∙ч",
-    "LOLE_h",
-    "ENS1_mean",
-    "ENS2_mean",
+    "LOLH",
     "ENS_evtN",
     "ENS_evtMaxH",
 
@@ -62,8 +60,8 @@ MAX_COL_SCAN = 500
 # Выбираешь, какие метрики входят в какой критерий.
 # Важно: метрики, указанные здесь, должны присутствовать в METRICS.
 SUPER_GROUPS: Dict[str, List[str]] = {
-    "economy": ["LCOE, руб/кВт∙ч"],
-    "reliability": ["ENS,кВт∙ч", "LOLE_h", "ENS_evtN", "ENS_evtMaxH"],
+    # "economy": ["LCOE, руб/кВт∙ч"],
+    "reliability": ["ENS,кВт∙ч", "LOLH", "ENS_evtN", "ENS_evtMaxH"],
     # "operations": ["Расход топлива, тыс.тонн", "Моточасы, тыс.мч"],
     # "operations": ["Моточасы, тыс.мч"],
 }
