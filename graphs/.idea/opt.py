@@ -24,7 +24,7 @@ OUTPUT_DIR = r"D:\results"
 # но со сдвигом по строкам.
 BASE_RANGE = "A2:IE6"
 
-THRESHOLD_SHARE = 0.99
+THRESHOLD_SHARE = 0.99999
 
 X_AXIS_LABEL = "Мощность ДГУ, кВт"
 Y_AXIS_LABEL = "Количество ДГУ"
@@ -117,7 +117,7 @@ GROUPS = [
 # =========================
 
 # "criterion" / "group" / "multi"
-PLOT_MODE = "criterion"
+PLOT_MODE = "group"
 
 SELECTED_CRITERION = "LCOE"
 SELECTED_GROUP = "Надежность"
