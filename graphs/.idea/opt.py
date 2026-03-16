@@ -18,13 +18,7 @@ EXCEL_PATH = r"D:\D.xlsx"
 SHEET_NAME = "SWEEP_2"
 OUTPUT_DIR = r"D:\results"
 
-# БАЗОВЫЙ диапазон для LCOE.
-# Все остальные критерии строятся автоматически
-# тем же размером и тем же диапазоном столбцов,
-# но со сдвигом по строкам.
 BASE_RANGE = "A2:IE6"
-
-THRESHOLD_SHARE = 0.99999
 
 X_AXIS_LABEL = "Мощность ДГУ, кВт"
 Y_AXIS_LABEL = "Количество ДГУ"
@@ -36,12 +30,8 @@ CELL_GRID_LW = 0.35
 CELL_GRID_ALPHA = 0.35
 
 X_LABEL_ROTATION = 90
-OPT_BORDER_COLOR = "#8C4A00"
 
-# Как агрегировать сценарии внутри одного критерия:
-# "mean"         -> среднее арифметическое score по сценариям
-# "geometric"    -> геометрическое среднее score по сценариям
-SCENARIO_AGGREGATION = "mean"
+SCENARIO_AGGREGATION = "mean"   # "mean" / "geometric"
 
 WHITE_ORANGE = LinearSegmentedColormap.from_list(
     "white_orange",
@@ -49,17 +39,28 @@ WHITE_ORANGE = LinearSegmentedColormap.from_list(
 )
 
 # =========================
+# ШТРИХОВКА ОПТИМАЛЬНЫХ ЗОН
+# =========================
+
+# LCOE / Экономика
+HATCH1 = "---"
+HATCH1_COLOR = "black"
+
+# Надежность
+HATCH2 = "|||"
+HATCH2_COLOR = "black"
+
+# Прозрачность фона hatch-прямоугольника
+HATCH_FACE_ALPHA = 0.0
+
+# Толщина видимой границы прямоугольника.
+# Оставляем очень маленькой, чтобы hatch рисовался корректно,
+# но визуально рамка почти не читалась.
+HATCH_EDGE_LINEWIDTH = 0.01
+
+# =========================
 # КРИТЕРИИ
 # =========================
-# row_offset = сдвиг относительно верхней строки BASE_RANGE
-#
-# Пример:
-# BASE_RANGE = A2:IE6
-# значит:
-#   LCOE -> A2:IE6         (offset = 0)
-#   ENS  -> A26:IE30       (offset = 24)
-#   LOLH -> A34:IE38       (offset = 32)
-# и т.д.
 
 CRITERIA = [
     {
@@ -113,11 +114,18 @@ GROUPS = [
 ]
 
 # =========================
-# РЕЖИМ ПОСТРОЕНИЯ
+# РЕЖИМ ВИЗУАЛИЗАЦИИ
 # =========================
+# "single" -> одна оценка
+# "dual"   -> две оценки одновременно
+PLOT_MODE_STYLE = "dual"
 
+# -------------------------
+# SINGLE MODE
+# -------------------------
 # "criterion" / "group" / "multi"
 PLOT_MODE = "group"
+THRESHOLD_SHARE = 0.999
 
 SELECTED_CRITERION = "LCOE"
 SELECTED_GROUP = "Надежность"
@@ -126,6 +134,35 @@ MULTI_SELECTION = [
     {"type": "group", "name": "Экономика", "weight": 1.0},
     {"type": "group", "name": "Надежность", "weight": 1.0},
 ]
+
+# -------------------------
+# DUAL MODE
+# -------------------------
+DUAL_1 = {
+    "scope_type": "criterion",   # "criterion" / "group" / "multi"
+    "criterion_name": "LCOE",
+    "group_name": "Экономика",
+    "multi_selection": [
+        {"type": "group", "name": "Экономика", "weight": 1.0},
+    ],
+    "threshold_share": 0.99,
+    "hatch": HATCH1,
+    "hatch_color": HATCH1_COLOR,
+    "label": "Экономика / LCOE",
+}
+
+DUAL_2 = {
+    "scope_type": "group",
+    "criterion_name": "ENS",
+    "group_name": "Надежность",
+    "multi_selection": [
+        {"type": "group", "name": "Надежность", "weight": 1.0},
+    ],
+    "threshold_share": 0.9999,
+    "hatch": HATCH2,
+    "hatch_color": HATCH2_COLOR,
+    "label": "Надежность",
+}
 
 OUTPUT_BASENAME = "heat_map"
 
@@ -196,10 +233,8 @@ def _to_float_ru_or_nan(v) -> float:
 
 def build_shifted_range(base_range: str, row_offset: int) -> str:
     min_col, min_row, max_col, max_row = range_boundaries(base_range)
-
     new_min_row = min_row + row_offset
     new_max_row = max_row + row_offset
-
     c1 = get_column_letter(min_col)
     c2 = get_column_letter(max_col)
     return f"{c1}{new_min_row}:{c2}{new_max_row}"
@@ -345,22 +380,18 @@ def normalize_matrix(values: np.ndarray, objective_mode: str, target_value: floa
     if objective_mode == "min":
         vmin = np.nanmin(arr)
         vmax = np.nanmax(arr)
-
         if np.isclose(vmin, vmax):
             out[finite] = 1.0
             return out
-
         out[finite] = (vmax - arr[finite]) / (vmax - vmin)
         return out
 
     elif objective_mode == "max":
         vmin = np.nanmin(arr)
         vmax = np.nanmax(arr)
-
         if np.isclose(vmin, vmax):
             out[finite] = 1.0
             return out
-
         out[finite] = (arr[finite] - vmin) / (vmax - vmin)
         return out
 
@@ -522,10 +553,7 @@ def get_criterion_result(
     threshold_percent = threshold_share * best_percent
     near_opt_mask = np.isfinite(final_score) & (final_score >= threshold_percent)
 
-    if spec.objective_mode == "target":
-        mode_suffix = f"target={spec.target_value}"
-    else:
-        mode_suffix = spec.objective_mode
+    mode_suffix = f"target={spec.target_value}" if spec.objective_mode == "target" else spec.objective_mode
 
     result_table = Table2D(
         x_labels=ref.x_labels,
@@ -674,6 +702,56 @@ def compute_multi_score(
     )
 
 
+def evaluate_scope(
+    scope_type: str,
+    threshold_share: float,
+    criteria_data: Dict[str, CriterionData],
+    criteria_specs: Dict[str, CriterionSpec],
+    group_specs: Dict[str, GroupSpec],
+    scenario_aggregation: str,
+    criterion_name: Optional[str] = None,
+    group_name: Optional[str] = None,
+    multi_selection: Optional[List[Dict]] = None
+) -> ScoreResult:
+    if scope_type == "criterion":
+        if not criterion_name:
+            raise ValueError("Для scope_type='criterion' нужен criterion_name.")
+        return get_criterion_result(
+            criteria_data=criteria_data,
+            criteria_specs=criteria_specs,
+            criterion_name=criterion_name,
+            threshold_share=threshold_share,
+            scenario_aggregation=scenario_aggregation
+        )
+
+    elif scope_type == "group":
+        if not group_name:
+            raise ValueError("Для scope_type='group' нужен group_name.")
+        return compute_group_score(
+            criteria_data=criteria_data,
+            criteria_specs=criteria_specs,
+            group_specs=group_specs,
+            group_name=group_name,
+            threshold_share=threshold_share,
+            scenario_aggregation=scenario_aggregation
+        )
+
+    elif scope_type == "multi":
+        if not multi_selection:
+            raise ValueError("Для scope_type='multi' нужен multi_selection.")
+        return compute_multi_score(
+            criteria_data=criteria_data,
+            criteria_specs=criteria_specs,
+            group_specs=group_specs,
+            multi_selection=multi_selection,
+            threshold_share=threshold_share,
+            scenario_aggregation=scenario_aggregation
+        )
+
+    else:
+        raise ValueError(f"Неизвестный scope_type: {scope_type}")
+
+
 def _ideal_text_color(val: float) -> str:
     return "white" if val >= 60.0 else "black"
 
@@ -688,7 +766,6 @@ def compute_layout(nx: int, ny: int, draw_cell_text: bool):
         y_font = 9
         axis_font = 11
         cell_font = 7
-        border_lw = 2.0
         bottom_margin = 0.28
     else:
         cell_w = 0.22
@@ -699,7 +776,6 @@ def compute_layout(nx: int, ny: int, draw_cell_text: bool):
         y_font = 8
         axis_font = 10
         cell_font = 0
-        border_lw = 1.4
         bottom_margin = 0.22
 
     return {
@@ -708,16 +784,46 @@ def compute_layout(nx: int, ny: int, draw_cell_text: bool):
         "y_font": y_font,
         "axis_font": axis_font,
         "cell_font": cell_font,
-        "border_lw": border_lw,
         "bottom_margin": bottom_margin,
     }
 
 
-def plot_score_heatmap(
+def add_hatched_cell(ax, x: int, y: int, hatch: str, edgecolor: str):
+    rect = Rectangle(
+        (x - 0.5, y - 0.5),
+        1,
+        1,
+        facecolor=(1, 1, 1, HATCH_FACE_ALPHA),
+        edgecolor=edgecolor,
+        linewidth=HATCH_EDGE_LINEWIDTH,
+        hatch=hatch
+    )
+    ax.add_patch(rect)
+
+
+def resolve_single_hatch(scope_type: str, criterion_name: str, group_name: str):
+    if scope_type == "criterion":
+        if criterion_name == "LCOE":
+            return HATCH1, HATCH1_COLOR, "LCOE / Экономика"
+        return HATCH2, HATCH2_COLOR, f"{criterion_name}"
+
+    if scope_type == "group":
+        if group_name == "Экономика":
+            return HATCH1, HATCH1_COLOR, "Экономика"
+        return HATCH2, HATCH2_COLOR, group_name
+
+    # multi
+    return HATCH1, HATCH1_COLOR, "Multi"
+
+
+def plot_single_score_heatmap(
     score_result: ScoreResult,
     threshold_share: float,
     out_path: str,
-    draw_cell_text: bool
+    draw_cell_text: bool,
+    hatch: str,
+    hatch_color: str,
+    hatch_label: str
 ) -> None:
     vals = score_result.table.values
     ny, nx = vals.shape
@@ -745,7 +851,6 @@ def plot_score_heatmap(
 
     ax.set_xticks(np.arange(nx))
     ax.set_yticks(np.arange(ny))
-
     ax.set_xticklabels(
         score_result.table.x_labels,
         rotation=X_LABEL_ROTATION,
@@ -754,14 +859,14 @@ def plot_score_heatmap(
         fontsize=layout["x_font"]
     )
     ax.set_yticklabels(score_result.table.y_labels, fontsize=layout["y_font"])
-
     ax.set_xlabel(X_AXIS_LABEL, fontsize=layout["axis_font"])
     ax.set_ylabel(Y_AXIS_LABEL, fontsize=layout["axis_font"])
 
     ax.set_title(
         f"Оптимальная зона\n"
         f"{score_result.title_suffix}\n"
-        f"near-optimal ≥ {int(threshold_share * 100)}% от лучшего "
+        f"Штриховка: {hatch_label}\n"
+        f"near-optimal ≥ {threshold_share:.5f} от лучшего "
         f"({score_result.threshold_percent:.1f}% из {score_result.best_percent:.1f}%)",
         fontsize=layout["axis_font"] + 1
     )
@@ -780,15 +885,7 @@ def plot_score_heatmap(
                 )
 
             if score_result.near_opt_mask[y, x]:
-                rect = Rectangle(
-                    (x - 0.5, y - 0.5),
-                    1,
-                    1,
-                    fill=False,
-                    edgecolor=OPT_BORDER_COLOR,
-                    linewidth=layout["border_lw"]
-                )
-                ax.add_patch(rect)
+                add_hatched_cell(ax, x, y, hatch=hatch, edgecolor=hatch_color)
 
     plt.tight_layout()
     plt.subplots_adjust(bottom=layout["bottom_margin"])
@@ -796,23 +893,116 @@ def plot_score_heatmap(
     plt.close(fig)
 
 
-def build_output_file_name(
-    output_basename: str,
-    plot_mode: str,
-    draw_cell_text: bool,
-    selected_criterion: str,
-    selected_group: str
-) -> str:
-    suffix = "_with_labels" if draw_cell_text else "_compact"
+def plot_dual_score_heatmap(
+    base_result: ScoreResult,
+    second_result: ScoreResult,
+    dual_1: Dict,
+    dual_2: Dict,
+    out_path: str,
+    draw_cell_text: bool
+) -> None:
+    vals = base_result.table.values
+    ny, nx = vals.shape
 
-    if plot_mode == "criterion":
-        return f"{output_basename}_criterion_{selected_criterion}{suffix}.png"
-    elif plot_mode == "group":
-        return f"{output_basename}_group_{selected_group}{suffix}.png"
-    elif plot_mode == "multi":
-        return f"{output_basename}_multi{suffix}.png"
-    else:
-        raise ValueError(f"Неизвестный PLOT_MODE={plot_mode}")
+    mask1 = base_result.near_opt_mask
+    mask2 = second_result.near_opt_mask
+    both_mask = mask1 & mask2
+    only1_mask = mask1 & (~mask2)
+    only2_mask = mask2 & (~mask1)
+
+    layout = compute_layout(nx, ny, draw_cell_text)
+    fig, ax = plt.subplots(figsize=layout["figsize"])
+
+    im = ax.imshow(
+        vals,
+        origin="lower",
+        aspect="auto",
+        interpolation="nearest",
+        cmap=WHITE_ORANGE,
+        vmin=0.0,
+        vmax=100.0
+    )
+
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label("Итоговая оценка базовой оценки, %", fontsize=layout["axis_font"])
+
+    if SHOW_CELL_GRID:
+        ax.set_xticks(np.arange(-0.5, nx, 1), minor=True)
+        ax.set_yticks(np.arange(-0.5, ny, 1), minor=True)
+        ax.grid(which="minor", color="black", linewidth=CELL_GRID_LW, alpha=CELL_GRID_ALPHA)
+
+    ax.set_xticks(np.arange(nx))
+    ax.set_yticks(np.arange(ny))
+    ax.set_xticklabels(
+        base_result.table.x_labels,
+        rotation=X_LABEL_ROTATION,
+        ha="center",
+        va="top",
+        fontsize=layout["x_font"]
+    )
+    ax.set_yticklabels(base_result.table.y_labels, fontsize=layout["y_font"])
+    ax.set_xlabel(X_AXIS_LABEL, fontsize=layout["axis_font"])
+    ax.set_ylabel(Y_AXIS_LABEL, fontsize=layout["axis_font"])
+
+    ax.set_title(
+        "Оптимальная зона: 2 точки зрения\n"
+        f"1) {dual_1['label']} | threshold={dual_1['threshold_share']}\n"
+        f"2) {dual_2['label']} | threshold={dual_2['threshold_share']}\n"
+        "Штриховка: 1-я / 2-я / обе",
+        fontsize=layout["axis_font"] + 1
+    )
+
+    for y in range(ny):
+        for x in range(nx):
+            v = vals[y, x]
+
+            if draw_cell_text and np.isfinite(v):
+                ax.text(
+                    x, y, f"{v:.1f}",
+                    ha="center",
+                    va="center",
+                    fontsize=layout["cell_font"],
+                    color=_ideal_text_color(v)
+                )
+
+            if only1_mask[y, x]:
+                add_hatched_cell(
+                    ax,
+                    x, y,
+                    hatch=dual_1["hatch"],
+                    edgecolor=dual_1["hatch_color"]
+                )
+
+            if only2_mask[y, x]:
+                add_hatched_cell(
+                    ax,
+                    x, y,
+                    hatch=dual_2["hatch"],
+                    edgecolor=dual_2["hatch_color"]
+                )
+
+            if both_mask[y, x]:
+                add_hatched_cell(
+                    ax,
+                    x, y,
+                    hatch=dual_1["hatch"],
+                    edgecolor=dual_1["hatch_color"]
+                )
+                add_hatched_cell(
+                    ax,
+                    x, y,
+                    hatch=dual_2["hatch"],
+                    edgecolor=dual_2["hatch_color"]
+                )
+
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=layout["bottom_margin"])
+    fig.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+
+
+def build_output_file_name(output_basename: str, style_mode: str, suffix: str) -> str:
+    return f"{output_basename}_{style_mode}_{suffix}.png"
 
 
 # =========================
@@ -843,58 +1033,109 @@ if __name__ == "__main__":
 
     validate_same_geometry_between_criteria(criteria_data)
 
-    if PLOT_MODE == "criterion":
-        score_result = get_criterion_result(
+    if PLOT_MODE_STYLE == "single":
+        score_result = evaluate_scope(
+            scope_type=PLOT_MODE,
+            threshold_share=THRESHOLD_SHARE,
             criteria_data=criteria_data,
             criteria_specs=criteria_specs,
+            group_specs=group_specs,
+            scenario_aggregation=SCENARIO_AGGREGATION,
             criterion_name=SELECTED_CRITERION,
-            threshold_share=THRESHOLD_SHARE,
-            scenario_aggregation=SCENARIO_AGGREGATION
-        )
-
-    elif PLOT_MODE == "group":
-        score_result = compute_group_score(
-            criteria_data=criteria_data,
-            criteria_specs=criteria_specs,
-            group_specs=group_specs,
             group_name=SELECTED_GROUP,
-            threshold_share=THRESHOLD_SHARE,
-            scenario_aggregation=SCENARIO_AGGREGATION
+            multi_selection=MULTI_SELECTION
         )
 
-    elif PLOT_MODE == "multi":
-        score_result = compute_multi_score(
+        single_hatch, single_hatch_color, single_label = resolve_single_hatch(
+            scope_type=PLOT_MODE,
+            criterion_name=SELECTED_CRITERION,
+            group_name=SELECTED_GROUP
+        )
+
+        file_name = build_output_file_name(
+            output_basename=OUTPUT_BASENAME,
+            style_mode="single",
+            suffix=PLOT_MODE
+        )
+        out_path = os.path.join(OUTPUT_DIR, file_name)
+
+        plot_single_score_heatmap(
+            score_result=score_result,
+            threshold_share=THRESHOLD_SHARE,
+            out_path=out_path,
+            draw_cell_text=DRAW_CELL_TEXT,
+            hatch=single_hatch,
+            hatch_color=single_hatch_color,
+            hatch_label=single_label
+        )
+
+        print()
+        print("=== RESULT SINGLE ===")
+        print(f"PLOT_MODE_STYLE         = {PLOT_MODE_STYLE}")
+        print(f"PLOT_MODE               = {PLOT_MODE}")
+        print(f"SCENARIO_AGGREGATION    = {SCENARIO_AGGREGATION}")
+        print(f"best_percent            = {score_result.best_percent:.4f}%")
+        print(f"threshold_percent       = {score_result.threshold_percent:.4f}%")
+        print(f"Heatmap saved to        = {out_path}")
+
+    elif PLOT_MODE_STYLE == "dual":
+        result1 = evaluate_scope(
+            scope_type=DUAL_1["scope_type"],
+            threshold_share=DUAL_1["threshold_share"],
             criteria_data=criteria_data,
             criteria_specs=criteria_specs,
             group_specs=group_specs,
-            multi_selection=MULTI_SELECTION,
-            threshold_share=THRESHOLD_SHARE,
-            scenario_aggregation=SCENARIO_AGGREGATION
+            scenario_aggregation=SCENARIO_AGGREGATION,
+            criterion_name=DUAL_1.get("criterion_name"),
+            group_name=DUAL_1.get("group_name"),
+            multi_selection=DUAL_1.get("multi_selection")
         )
+
+        result2 = evaluate_scope(
+            scope_type=DUAL_2["scope_type"],
+            threshold_share=DUAL_2["threshold_share"],
+            criteria_data=criteria_data,
+            criteria_specs=criteria_specs,
+            group_specs=group_specs,
+            scenario_aggregation=SCENARIO_AGGREGATION,
+            criterion_name=DUAL_2.get("criterion_name"),
+            group_name=DUAL_2.get("group_name"),
+            multi_selection=DUAL_2.get("multi_selection")
+        )
+
+        if result1.table.x_labels != result2.table.x_labels or result1.table.y_labels != result2.table.y_labels:
+            raise ValueError("Результаты dual-mode имеют разную геометрию.")
+
+        file_name = build_output_file_name(
+            output_basename=OUTPUT_BASENAME,
+            style_mode="dual",
+            suffix="overlay"
+        )
+        out_path = os.path.join(OUTPUT_DIR, file_name)
+
+        plot_dual_score_heatmap(
+            base_result=result1,
+            second_result=result2,
+            dual_1=DUAL_1,
+            dual_2=DUAL_2,
+            out_path=out_path,
+            draw_cell_text=DRAW_CELL_TEXT
+        )
+
+        both_mask = result1.near_opt_mask & result2.near_opt_mask
+
+        print()
+        print("=== RESULT DUAL ===")
+        print(f"PLOT_MODE_STYLE         = {PLOT_MODE_STYLE}")
+        print(f"SCENARIO_AGGREGATION    = {SCENARIO_AGGREGATION}")
+        print(f"Dual #1                 = {DUAL_1['label']}")
+        print(f"Dual #1 threshold       = {DUAL_1['threshold_share']}")
+        print(f"Dual #2                 = {DUAL_2['label']}")
+        print(f"Dual #2 threshold       = {DUAL_2['threshold_share']}")
+        print(f"Cells in mask #1        = {int(np.sum(result1.near_opt_mask))}")
+        print(f"Cells in mask #2        = {int(np.sum(result2.near_opt_mask))}")
+        print(f"Cells in intersection   = {int(np.sum(both_mask))}")
+        print(f"Heatmap saved to        = {out_path}")
 
     else:
-        raise ValueError(f"Неизвестный PLOT_MODE={PLOT_MODE}")
-
-    file_name = build_output_file_name(
-        output_basename=OUTPUT_BASENAME,
-        plot_mode=PLOT_MODE,
-        draw_cell_text=DRAW_CELL_TEXT,
-        selected_criterion=SELECTED_CRITERION,
-        selected_group=SELECTED_GROUP
-    )
-    heatmap_path = os.path.join(OUTPUT_DIR, file_name)
-
-    plot_score_heatmap(
-        score_result=score_result,
-        threshold_share=THRESHOLD_SHARE,
-        out_path=heatmap_path,
-        draw_cell_text=DRAW_CELL_TEXT
-    )
-
-    print()
-    print("=== RESULT ===")
-    print(f"PLOT_MODE              = {PLOT_MODE}")
-    print(f"SCENARIO_AGGREGATION   = {SCENARIO_AGGREGATION}")
-    print(f"best_percent           = {score_result.best_percent:.4f}%")
-    print(f"threshold_percent      = {score_result.threshold_percent:.4f}%")
-    print(f"Heatmap saved to       = {heatmap_path}")
+        raise ValueError(f"Неизвестный PLOT_MODE_STYLE={PLOT_MODE_STYLE}")
