@@ -19,11 +19,11 @@ from openpyxl.worksheet.worksheet import Worksheet
 DEFAULT_EXCEL_PATH = r"D:\comb2.xlsx"
 DEFAULT_SHEET = "SWEEP_2"
 
-DEFAULT_BLOCK_RANGE = "A2:AU6"
+DEFAULT_BLOCK_RANGE = "A2:Y14"
 DEFAULT_GAP_ROWS = 3
 
-DEFAULT_SCENARIO_LABELS: Optional[List[str]] = ["D", "SS"]  # legend labels
-CELL_LABELS_SHORT: List[str] = ["D", "SS"]  # short names shown in cells
+DEFAULT_SCENARIO_LABELS: Optional[List[str]] = ["SS", "D"]  # legend labels
+CELL_LABELS_SHORT: List[str] = ["SS", "D"]  # short names shown in cells
 
 USE_DEFAULT_LABELS = True
 

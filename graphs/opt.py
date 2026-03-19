@@ -14,14 +14,16 @@ from openpyxl.utils.cell import range_boundaries, get_column_letter
 # НАСТРОЙКИ
 # =========================
 
-EXCEL_PATH = r"D:\D.xlsx"
+# EXCEL_PATH = r"D:\comb_results.xlsx"
+EXCEL_PATH = r"D:\SS.xlsx"
 SHEET_NAME = "SWEEP_2"
 OUTPUT_DIR = r"D:\results"
 
-BASE_RANGE = "A2:IE6"
+# BASE_RANGE = "A2:Y14"
+BASE_RANGE = "A2:AU6"
 
-X_AXIS_LABEL = "Мощность ДГУ, кВт"
-Y_AXIS_LABEL = "Количество ДГУ"
+X_AXIS_LABEL = "Мощность ВЭУ, кВт"
+Y_AXIS_LABEL = "Емкость СНЭ"
 
 DRAW_CELL_TEXT = False
 
@@ -72,28 +74,28 @@ CRITERIA = [
     },
     {
         "name": "ENS",
-        "row_offset": 24,
+        "row_offset": 48,
         "objective_mode": "min",
         "target_value": None,
         "weight": 1.0,
     },
     {
         "name": "LOLH",
-        "row_offset": 32,
-        "objective_mode": "min",
-        "target_value": None,
-        "weight": 1.0,
-    },
-    {
-        "name": "LOLP",
-        "row_offset": 56,
-        "objective_mode": "min",
-        "target_value": None,
-        "weight": 1.0,
-    },
-    {
-        "name": "LPSP",
         "row_offset": 64,
+        "objective_mode": "min",
+        "target_value": None,
+        "weight": 1.0,
+    },
+    {
+        "name": "ENS_evtN",
+        "row_offset": 80,
+        "objective_mode": "min",
+        "target_value": None,
+        "weight": 1.0,
+    },
+    {
+        "name": "ENS_evtMaxH",
+        "row_offset": 96,
         "objective_mode": "min",
         "target_value": None,
         "weight": 1.0,
@@ -103,7 +105,7 @@ CRITERIA = [
 GROUPS = [
     {
         "name": "Надежность",
-        "criteria": ["ENS", "LOLH", "LOLP", "LPSP"],
+        "criteria": ["ENS", "LOLH", "ENS_evtN", "ENS_evtMaxH"],
         "weight": 1.0,
     },
     {
@@ -125,7 +127,7 @@ PLOT_MODE_STYLE = "dual"
 # -------------------------
 # "criterion" / "group" / "multi"
 PLOT_MODE = "group"
-THRESHOLD_SHARE = 0.999
+THRESHOLD_SHARE = 0.90
 
 SELECTED_CRITERION = "LCOE"
 SELECTED_GROUP = "Надежность"
@@ -145,7 +147,7 @@ DUAL_1 = {
     "multi_selection": [
         {"type": "group", "name": "Экономика", "weight": 1.0},
     ],
-    "threshold_share": 0.99,
+    "threshold_share": 0.95,
     "hatch": HATCH1,
     "hatch_color": HATCH1_COLOR,
     "label": "Экономика / LCOE",
@@ -158,7 +160,7 @@ DUAL_2 = {
     "multi_selection": [
         {"type": "group", "name": "Надежность", "weight": 1.0},
     ],
-    "threshold_share": 0.9999,
+    "threshold_share": 0.95,
     "hatch": HATCH2,
     "hatch_color": HATCH2_COLOR,
     "label": "Надежность",
