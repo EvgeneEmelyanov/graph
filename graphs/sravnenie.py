@@ -11,26 +11,47 @@ from openpyxl.utils.cell import range_boundaries, get_column_letter
 
 
 # =========================
-# НАСТРОЙКИ
+# НАСТРОЙКИ сравниваю разные схемы по разным дгу
 # =========================
 
 EXCEL_ITEMS = [
-    {"path": r"D:\SS.xlsx", "label": "Секционированная система", "out_name": "sectioned_system"},
-    {"path": r"D:\D.xlsx", "label": "Двойная система", "out_name": "double_system"},
+    # {"path": r"D:\SN.xlsx", "label": "Несекционированная система", "out_name": "sectioned_system"},
+    # {"path": r"D:\SS.xlsx", "label": "Секционированная система", "out_name": "sectioned_system"},
+    # {"path": r"D:\D.xlsx", "label": "Двойная система", "out_name": "double_system"},
+
+    {"path": r"D:\comb_results.xlsx", "label": "Секционированная система", "out_name": "double_system"},
+
+
+
+    # {"path": r"D:\0 10 40.xlsx", "label": "Cекционированная система", "out_name": "0 10 40"},
+    # {"path": r"D:\100 10 40.xlsx", "label": "Cекционированная система", "out_name": "100 10 40"},
+    # {"path": r"D:\200 10 40.xlsx", "label": "Cекционированная система", "out_name": "200 10 40"},
+    # {"path": r"D:\300 10 40.xlsx", "label": "Cекционированная система", "out_name": "300 10 40"},
+
+    # {"path": r"D:\200 0 0.xlsx", "label": "Секционированная система", "out_name": "200 0 0"},
+    # {"path": r"D:\200 0 30.xlsx", "label": "Секционированная система", "out_name": "200 0 30"},
+    # {"path": r"D:\200 0 80.xlsx", "label": "Секционированная система", "out_name": "200 0 80"},
+    # {"path": r"D:\200 10 40.xlsx", "label": "Секционированная система", "out_name": "200 10 40"},
+    # {"path": r"D:\200 30 50.xlsx", "label": "Секционированная система", "out_name": "200 30 50"},
 ]
 
 SHEET_NAME = "SWEEP_2"
 OUTPUT_DIR = r"D:\results"
 
-BASE_RANGE = "A2:AU6"
+# BASE_RANGE = "A2:AU6"
+# BASE_RANGE = "A2:L14"
+# BASE_RANGE = "A2:Y14"
+BASE_RANGE = "A2:AK5"
 
 X_AXIS_LABEL = "Мощность ДГУ, кВт"
+# X_AXIS_LABEL = "Емкость СНЭ, %"
 Y_AXIS_LABEL = "Количество ДГУ"
+# Y_AXIS_LABEL = "Мощность ВЭУ, кВт"
 
 SCENARIO_AGGREGATION = "mean"
 
-TOP_THRESHOLD_LCOE = 0.99
-TOP_THRESHOLD_RELIABILITY = 0.999
+TOP_THRESHOLD_LCOE = 0.95
+TOP_THRESHOLD_RELIABILITY = 0.99
 
 GRID_COLOR = "#8a8a8a"
 
@@ -149,10 +170,10 @@ def process_file(item):
 
     # Чтение всех метрик
     LCOE = read_table(ws, build_range(BASE_RANGE, 0))
-    ENS = read_table(ws, build_range(BASE_RANGE, 24))
-    LOLH = read_table(ws, build_range(BASE_RANGE, 32))
-    EVT_N = read_table(ws, build_range(BASE_RANGE, 40))
-    EVT_MAX = read_table(ws, build_range(BASE_RANGE, 48))
+    ENS = read_table(ws, build_range(BASE_RANGE, 21))
+    LOLH = read_table(ws, build_range(BASE_RANGE, 28))
+    EVT_N = read_table(ws, build_range(BASE_RANGE, 35))
+    EVT_MAX = read_table(ws, build_range(BASE_RANGE, 42))
 
     # LOLH -> в год
     LOLH.values = LOLH.values / 20.0

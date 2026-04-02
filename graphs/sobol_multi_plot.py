@@ -14,24 +14,22 @@ from matplotlib.colors import LinearSegmentedColormap
 # 2) "bars"     — для каждой метрики отдельный график: сгруппированные горизонтальные бары ST по введённым схемам
 COMPARE_MODE = "triptych"   # "triptych" | "bars"
 
-SCHEMES_ORDER = ["SN", "SS", "D", "H", "A", "B", "C", "4", "5"]
+SCHEMES_ORDER = ["SN", "SS", "D", "H", "1", "2", "3", "4", "5"]
 
 SCHEME_TITLES = {
     "SN": ["Одиночная", "несекционированная"],
     "SS": ["Одиночная", "секционированная"],
     "D":  ["Двойная"],
     "H":  ["хехе"],
-    "A":  ["Базовые диапазоны"],
-    "B":  ["ДТ +-10%"],
-    "C":  ["МЧТ+-10%"],
-    "4":  ["Вариант 4"],
-    "5":  ["Вариант 5"],
+    "1":  ["1"],
+    "2":  ["2"],
+    "3":  ["3"],
+    "4":  ["4"],
+    "5":  ["5"],
 }
 
-# Строка с именем схемы должна быть отдельной строкой
-SCHEME_HEADER_RE = re.compile(r"^\s*(SN|SS|D|H|A|B|C|4|5)\s*$", re.IGNORECASE)
+SCHEME_HEADER_RE = re.compile(r"^\s*(SN|SS|D|H|1|2|3|4|5)\s*$", re.IGNORECASE)
 
-# Русские подписи параметров (как было)
 PARAM_LABELS_RU = {
     "FIRST_CAT": "Доля потребителей I категории",
     "SECOND_CAT": "Доля потребителей II категории",
@@ -85,15 +83,42 @@ TITLE_PREFIX = "Sobol: сравнение схем"
 FONT_BASE = 11
 FONT_SMALL = 10
 MAX_PARAM_LABEL_LEN_FOR_WIDE = 14
-ZERO_EPS = 5e-4  # все <=0 или |x|<eps считаем 0
+ZERO_EPS = 5e-4
 
-# ОБНОВЛЕНО: добавили LOLE (S_LOLE/ST_LOLE)
 PREFERRED_METRIC_ORDER = ["LCOE", "LOLE", "ENS", "Fuel", "Moto"]
 
-WHITE_ORANGE = LinearSegmentedColormap.from_list(
-    "white_orange",
-    [(1.0, 1.0, 1.0), (1.0, 0.85, 0.6), (1.0, 0.55, 0.0)],
+# =====================================================
+# СПОКОЙНАЯ МАТОВАЯ ПАЛИТРА
+# =====================================================
+
+# Для heatmap: светло-серый -> пыльно-синий -> тёмный сине-серый
+MATTE_HEATMAP = LinearSegmentedColormap.from_list(
+    "matte_heatmap",
+    [
+        "#f2f2f2",
+        "#d9e1e5",
+        "#a9bcc8",
+        "#6f94ad",
+        "#4d7a99",
+    ],
 )
+
+# Спокойные матовые цвета для bar-графиков
+SCHEME_BAR_COLORS = {
+    "SN": "#c98d5b",  # мягкий оранжево-коричневый
+    "SS": "#4d7a99",  # пыльно-синий
+    "D":  "#6e7f73",  # серо-зелёный
+    "H":  "#8e7c6d",  # тауп
+    "A":  "#8fa8b7",  # светлый стальной
+    "B":  "#b79a7e",  # песочный
+    "C":  "#708c9e",  # серо-синий
+    "4":  "#9b8f99",  # пыльно-лиловый
+    "5":  "#7f8a8f",  # серо-графитовый
+}
+
+GRID_COLOR = "#a0a0a0"
+GRID_ALPHA = 0.22
+
 # =====================================================
 
 METRIC_STATS_RE = re.compile(
@@ -113,8 +138,8 @@ SINGLE_METRIC_PARAM_RE = re.compile(
 # -------------------------
 @dataclass(frozen=True)
 class SchemeData:
-    stats: Dict[str, Dict[str, float]]  # metric -> {var,std,min,max}
-    data: Dict[str, Dict[str, Tuple[float, float]]]  # param -> metric -> (S, ST)
+    stats: Dict[str, Dict[str, float]]
+    data: Dict[str, Dict[str, Tuple[float, float]]]
 
 
 # -------------------------
@@ -126,11 +151,6 @@ def parse_number(s: str) -> float:
 
 
 def read_lines_from_console() -> List[str]:
-    """
-    Вставляешь данные для 1..N схем подряд (SN/SS/D/H/A/B/C/4/5),
-    затем ОДНА пустая строка — конец ввода.
-    ВАЖНО: строка с именем схемы должна быть отдельной строкой.
-    """
     print("Вставьте данные (SN/SS/D/H/A/B/C/4/5...), затем ОДНА пустая строка — конец ввода.\n")
     lines: List[str] = []
     while True:
@@ -147,11 +167,6 @@ def read_lines_from_console() -> List[str]:
 
 
 def split_stats_and_body(lines: List[str]) -> Tuple[List[str], List[str]]:
-    """
-    Делит блок схемы на:
-      - lines_stats: строки со статистиками "Metric: var=... std=... range=[..]"
-      - lines_body:  дальше либо табличный формат (param S_... ST_...), либо строчный формат (PARAM S=.. ST=..)
-    """
     idx: Optional[int] = None
     for i, line in enumerate(lines):
         if METRIC_STATS_RE.match(line.strip()):
@@ -183,19 +198,12 @@ def parse_metric_stats(lines_stats: List[str]) -> Dict[str, Dict[str, float]]:
 
 
 def parse_format2_table(lines_body: List[str]) -> Dict[str, Dict[str, Tuple[float, float]]]:
-    """
-    Формат 2:
-      param  S_LCOE ST_LCOE S_LOLE ST_LOLE S_ENS ST_ENS ...
-    Возвращает:
-      data[param][metric] = (S, ST)
-    """
     header = lines_body[0].strip().split()
     if not header or header[0].lower() != "param":
         raise ValueError("Ожидается заголовок таблицы, начинающийся с: param ...")
 
     col_idx = {name: i for i, name in enumerate(header)}
 
-    # Ищем пары S_x / ST_x динамически (теперь поддерживает LOLE и любые будущие метрики)
     metrics: List[str] = []
     for name in header[1:]:
         if not name.startswith("S_"):
@@ -228,7 +236,6 @@ def parse_format2_table(lines_body: List[str]) -> Dict[str, Dict[str, Tuple[floa
 
 
 def choose_single_metric_name(stats: Dict[str, Dict[str, float]]) -> str:
-    # приоритеты обновлены: если есть LCOE — он, иначе LOLE, иначе первая по алфавиту
     if "LCOE" in stats:
         return "LCOE"
     if "LOLE" in stats:
@@ -243,10 +250,6 @@ def choose_single_metric_name(stats: Dict[str, Dict[str, float]]) -> str:
 def parse_format1_single_metric(
     lines_body: List[str], metric_name: str
 ) -> Dict[str, Dict[str, Tuple[float, float]]]:
-    """
-    Формат 1:
-      PARAM  S=0.123  ST=0.456
-    """
     data: Dict[str, Dict[str, Tuple[float, float]]] = {}
     for line in lines_body:
         if line.strip() == "":
@@ -315,7 +318,7 @@ def parse_multi_scheme_input(lines: List[str]) -> Dict[str, SchemeData]:
 
 
 # -------------------------
-# Formatting helpers for stats table (σ/min/max)
+# Formatting helpers
 # -------------------------
 def fmt_1dp_trim(x: float) -> str:
     s = f"{x:.1f}"
@@ -325,7 +328,6 @@ def fmt_1dp_trim(x: float) -> str:
 
 
 def scale_stat(metric: str, x: float) -> float:
-    # оставляем прежнюю логику единиц
     if metric == "Fuel":
         return x / 1e6
     if metric == "Moto":
@@ -442,7 +444,7 @@ def sort_params(
         return params
 
     target_metric = "LCOE" if "LCOE" in metrics_all else metrics_all[0]
-    use_total = (mode == "avg_lcoe_st")  # True -> ST, False -> S
+    use_total = (mode == "avg_lcoe_st")
 
     scored: List[Tuple[str, float]] = []
     for p in params:
@@ -503,7 +505,6 @@ def plot_triptych(parsed: Dict[str, SchemeData]):
 
     gs = fig.add_gridspec(nrows=2, ncols=ncols, height_ratios=[0.72, 2.65])
 
-    # TOP: stats tables
     for col, scheme in enumerate(schemes):
         ax_t = fig.add_subplot(gs[0, col])
         ax_t.axis("off")
@@ -525,14 +526,13 @@ def plot_triptych(parsed: Dict[str, SchemeData]):
 
         draw_scheme_title(ax_t, SCHEME_TITLES.get(scheme, [scheme]), fontsize=FONT_BASE)
 
-    # BOTTOM: heatmaps
     heatmap_axes = []
     for col, scheme in enumerate(schemes):
         ax = fig.add_subplot(gs[1, col])
         heatmap_axes.append(ax)
 
         M = Ms[scheme]
-        ax.imshow(M, aspect="auto", cmap=WHITE_ORANGE, vmin=0.0, vmax=vmax)
+        ax.imshow(M, aspect="auto", cmap=MATTE_HEATMAP, vmin=0.0, vmax=vmax)
 
         ax.set_xticks(np.arange(len(metrics)))
         ax.set_xticklabels(metrics, fontsize=FONT_BASE)
@@ -546,6 +546,11 @@ def plot_triptych(parsed: Dict[str, SchemeData]):
         ax.tick_params(axis="x", pad=6)
         ax.tick_params(axis="y", pad=6)
 
+        ax.set_xticks(np.arange(-0.5, len(metrics), 1), minor=True)
+        ax.set_yticks(np.arange(-0.5, len(params), 1), minor=True)
+        ax.grid(which="minor", color="white", linewidth=0.6, alpha=0.28)
+        ax.tick_params(which="minor", bottom=False, left=False)
+
         threshold = 0.60 * vmax
         for i in range(M.shape[0]):
             for j in range(M.shape[1]):
@@ -554,7 +559,7 @@ def plot_triptych(parsed: Dict[str, SchemeData]):
                 ax.text(j, i, fmt_cell(val), ha="center", va="center", fontsize=FONT_SMALL, color=color)
 
     cbar = fig.colorbar(
-        plt.cm.ScalarMappable(cmap=WHITE_ORANGE, norm=plt.Normalize(0.0, vmax)),
+        plt.cm.ScalarMappable(cmap=MATTE_HEATMAP, norm=plt.Normalize(0.0, vmax)),
         ax=heatmap_axes,
         shrink=1.0,
         location="right",
@@ -610,14 +615,22 @@ def plot_bars(parsed: Dict[str, SchemeData]):
             vmax = max(vmax, float(vals.max()) if vals.size else 0.0)
 
             label = " ".join(SCHEME_TITLES.get(scheme, [scheme]))
-            ax.barh(y + offsets.get(scheme, 0.0), vals, height=bar_h, label=label)
+            color = SCHEME_BAR_COLORS.get(scheme, "#6f94ad")
+            ax.barh(
+                y + offsets.get(scheme, 0.0),
+                vals,
+                height=bar_h,
+                label=label,
+                color=color,
+                edgecolor="none"
+            )
 
         ax.set_yticks(y)
         ax.set_yticklabels(y_labels, fontsize=FONT_BASE)
         ax.set_xlabel("ST (доля дисперсии)", fontsize=FONT_BASE)
         ax.set_title(f"{TITLE_PREFIX}: {metric} — ST по схемам", fontsize=FONT_BASE)
-        ax.grid(axis="x", alpha=0.25)
-        ax.legend()
+        ax.grid(axis="x", alpha=GRID_ALPHA, color=GRID_COLOR)
+        ax.legend(frameon=True)
 
         ax.set_xlim(0, max(vmax * 1.10, 0.05))
         plt.show()

@@ -15,15 +15,18 @@ from openpyxl.utils.cell import range_boundaries, get_column_letter
 # =========================
 
 # EXCEL_PATH = r"D:\comb_results.xlsx"
-EXCEL_PATH = r"D:\SS.xlsx"
+EXCEL_PATH = r"D:\SN.xlsx"
 SHEET_NAME = "SWEEP_2"
 OUTPUT_DIR = r"D:\results"
 
 # BASE_RANGE = "A2:Y14"
-BASE_RANGE = "A2:AU6"
+# BASE_RANGE = "A2:AU6"
+BASE_RANGE = "A2:AY7"
 
 X_AXIS_LABEL = "Мощность ВЭУ, кВт"
+# X_AXIS_LABEL = "Мощность ВЭУ, кВт"
 Y_AXIS_LABEL = "Емкость СНЭ"
+# Y_AXIS_LABEL = "Емкость СНЭ"
 
 DRAW_CELL_TEXT = False
 
@@ -74,28 +77,28 @@ CRITERIA = [
     },
     {
         "name": "ENS",
-        "row_offset": 48,
+        "row_offset": 27,
         "objective_mode": "min",
         "target_value": None,
         "weight": 1.0,
     },
     {
         "name": "LOLH",
-        "row_offset": 64,
+        "row_offset": 36,
         "objective_mode": "min",
         "target_value": None,
         "weight": 1.0,
     },
     {
         "name": "ENS_evtN",
-        "row_offset": 80,
+        "row_offset": 45,
         "objective_mode": "min",
         "target_value": None,
         "weight": 1.0,
     },
     {
         "name": "ENS_evtMaxH",
-        "row_offset": 96,
+        "row_offset": 54,
         "objective_mode": "min",
         "target_value": None,
         "weight": 1.0,

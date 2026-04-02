@@ -1,43 +1,59 @@
 import os
+import re
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 from openpyxl import load_workbook
 
 # =========================
 # НАСТРОЙКИ
 # =========================
-EXCEL_PATH = r"D:\comb_results.xlsx"  # при необходимости замени на свой путь
+EXCEL_PATH = r"D:\comb_results.xlsx"
 SHEET_NAME = "SWEEP_2"
 OUTPUT_DIR = r"D:\results"
 
 SCHEME_1_NAME = "Секционированная система"
 SCHEME_2_NAME = "Двойная система"
 
-PEAK_LOAD_KW = 1346.0   # пиковая нагрузка
-WT_COUNT = 2            # число ВЭУ
-SIM_YEARS = 20          # длительность моделирования для LOLH
+PEAK_LOAD_KW = 1346.0
+WT_COUNT = 2
+SIM_YEARS = 20
 
-# Метрики:
-# 1) как искать в Excel
-# 2) как подписывать на графике
 METRICS = [
-    ("ENS", "ENS"),
-    ("LOLH", "LOLH, ч/год"),
+    ("LCOE", "LCOE, руб/кВт∙ч"),
+    ("LPSP", "LPSP"),
+    ("LOLP", "LOLP"),
     ("ENS_evtN", "Кол-во событий ENS"),
     ("ENS_evtMaxH", "Макс. длит. ENS, ч"),
 ]
 
-# Возможные варианты имен в заголовках Excel
 HEADER_ALIASES = {
+    "LCOE": [
+        "LCOE",
+        "LCOE,руб/кВт∙ч",
+        "LCOE, руб/кВт∙ч",
+        "LCOE,руб/кВт·ч",
+        "LCOE, руб/кВт·ч",
+        "LCOE,руб/кВт*ч",
+        "LCOE, руб/кВт*ч",
+    ],
     "ENS": [
         "ENS",
         "ENS,кВт∙ч",
         "ENS, кВт∙ч",
         "ENS,кВт·ч",
         "ENS, кВт·ч",
+        "ENS,кВт*ч",
+        "ENS, кВт*ч",
     ],
     "LOLH": [
         "LOLH",
+    ],
+    "LOLP": [
+        "LOLP",
+    ],
+    "LPSP": [
+        "LPSP",
     ],
     "ENS_evtN": [
         "ENS_evtN",
@@ -50,6 +66,37 @@ HEADER_ALIASES = {
     ],
 }
 
+# =========================
+# СПОКОЙНАЯ МАТОВАЯ ПАЛИТРА
+# =========================
+MATTE_METRIC_CMAP = LinearSegmentedColormap.from_list(
+    "matte_metric",
+    [
+        "#f2f2f2",
+        "#cfd8dc",
+        "#8ea9b8",
+        "#5f86a2",
+        "#426f91",
+    ]
+)
+
+MATTE_DIFF_CMAP = LinearSegmentedColormap.from_list(
+    "matte_diff",
+    [
+        "#4d7a99",
+        "#8fa8b7",
+        "#e9e9e9",
+        "#ddb48c",
+        "#c98d5b",
+    ]
+)
+
+GRID_COLOR = "#ffffff"
+GRID_ALPHA = 0.35
+TITLE_SIZE = 12
+LABEL_SIZE = 12
+TICK_SIZE = 11
+
 
 # =========================
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -57,7 +104,17 @@ HEADER_ALIASES = {
 def normalize_text(x):
     if x is None:
         return ""
-    return str(x).strip().replace(" ", "").replace("·", "∙")
+    return (
+        str(x)
+        .strip()
+        .replace(" ", "")
+        .replace("·", "∙")
+        .replace("*", "∙")
+    )
+
+
+def is_empty(v):
+    return v is None or str(v).strip() == ""
 
 
 def to_float(v):
@@ -68,55 +125,115 @@ def to_float(v):
     s = str(v).strip().replace(" ", "").replace(",", ".")
     if s == "":
         return np.nan
-    return float(s)
+    try:
+        return float(s)
+    except ValueError:
+        return np.nan
 
 
-def find_metric_start_row(ws, metric_key):
+def safe_filename(name):
+    """
+    Делает безопасное имя файла:
+    убирает недопустимые символы \\ / : * ? " < > |
+    """
+    s = str(name).strip()
+    s = re.sub(r'[\\/:*?"<>|]+', "_", s)
+    s = s.replace("\n", "_").replace("\r", "_")
+    return s
+
+
+def find_metric_cells(ws, metric_key):
+    """
+    Ищет все ячейки с подписью метрики на листе.
+    Возвращает список (row, col).
+    """
     aliases_norm = {normalize_text(a) for a in HEADER_ALIASES[metric_key]}
+    found = []
 
     for r in range(1, ws.max_row + 1):
-        v1 = normalize_text(ws.cell(r, 1).value)
-        v14 = normalize_text(ws.cell(r, 14).value)
-        if v1 in aliases_norm or v14 in aliases_norm:
-            return r
+        for c in range(1, ws.max_column + 1):
+            v = normalize_text(ws.cell(r, c).value)
+            if v in aliases_norm:
+                found.append((r, c))
 
-    raise ValueError(f"Не найден блок для метрики: {metric_key}")
+    if not found:
+        raise ValueError(f"Не найдена метрика: {metric_key}")
+
+    return found
+
+
+def extract_block_from_label(ws, label_row, label_col):
+    """
+    Структура блока:
+      (label_row, label_col)       : подпись критерия
+      (label_row + 1, label_col+1) : начало X-подписей
+      (label_row + 2, label_col)   : начало Y-подписей
+      (label_row + 2, label_col+1) : начало матрицы
+
+    Конец X — первая пустая ячейка вправо в строке X.
+    Конец Y — первая пустая ячейка вниз в колонке Y.
+    """
+    x_row = label_row + 1
+    y_start_row = label_row + 2
+    x_start_col = label_col + 1
+    y_col = label_col
+
+    x_cols = []
+    c = x_start_col
+    while c <= ws.max_column:
+        v = ws.cell(x_row, c).value
+        if is_empty(v):
+            break
+        x_cols.append(c)
+        c += 1
+
+    if not x_cols:
+        raise ValueError(
+            f"У блока {ws.cell(label_row, label_col).coordinate} не найдены подписи X"
+        )
+
+    y_rows = []
+    r = y_start_row
+    while r <= ws.max_row:
+        v = ws.cell(r, y_col).value
+        if is_empty(v):
+            break
+        y_rows.append(r)
+        r += 1
+
+    if not y_rows:
+        raise ValueError(
+            f"У блока {ws.cell(label_row, label_col).coordinate} не найдены подписи Y"
+        )
+
+    x_raw = [to_float(ws.cell(x_row, c).value) for c in x_cols]
+    y_raw = [to_float(ws.cell(r, y_col).value) for r in y_rows]
+
+    z = np.array(
+        [[to_float(ws.cell(r, c).value) for c in x_cols] for r in y_rows],
+        dtype=float
+    )
+
+    return x_raw, y_raw, z
 
 
 def extract_two_scheme_blocks(ws, metric_key):
     """
-    Ожидаемая структура блока:
-      row      : название метрики
-      row + 1  : строка X (емкость СНЭ)
-      row + 2 ... row + 13 : строки Y (мощность одной ВЭУ) + значения
-
-    Левая схема:
-      Y-подписи: col=1
-      X: cols 2..12
-      data: rows row+2..row+13, cols 2..12
-
-    Правая схема:
-      Y-подписи: col=14
-      X: cols 15..25
-      data: rows row+2..row+13, cols 15..25
+    Для одной метрики ищет все блоки по подписи метрики.
+    Берет первые два блока слева направо / сверху вниз.
     """
-    start_row = find_metric_start_row(ws, metric_key)
+    metric_cells = find_metric_cells(ws, metric_key)
+    metric_cells = sorted(metric_cells, key=lambda rc: (rc[0], rc[1]))
 
-    x1_raw = [to_float(ws.cell(start_row + 1, c).value) for c in range(2, 13)]
-    y1_raw = [to_float(ws.cell(r, 1).value) for r in range(start_row + 2, start_row + 14)]
-    z1 = np.array(
-        [[to_float(ws.cell(r, c).value) for c in range(2, 13)]
-         for r in range(start_row + 2, start_row + 14)],
-        dtype=float
-    )
+    if len(metric_cells) < 2:
+        raise ValueError(
+            f"Для метрики {metric_key} найдено меньше двух блоков: {metric_cells}"
+        )
 
-    x2_raw = [to_float(ws.cell(start_row + 1, c).value) for c in range(15, 26)]
-    y2_raw = [to_float(ws.cell(r, 14).value) for r in range(start_row + 2, start_row + 14)]
-    z2 = np.array(
-        [[to_float(ws.cell(r, c).value) for c in range(15, 26)]
-         for r in range(start_row + 2, start_row + 14)],
-        dtype=float
-    )
+    (r1, c1), (r2, c2) = metric_cells[:2]
+
+    x1_raw, y1_raw, z1 = extract_block_from_label(ws, r1, c1)
+    x2_raw, y2_raw, z2 = extract_block_from_label(ws, r2, c2)
 
     return x1_raw, y1_raw, z1, x2_raw, y2_raw, z2
 
@@ -124,7 +241,6 @@ def extract_two_scheme_blocks(ws, metric_key):
 def transform_metric(metric_key, arr):
     arr = arr.astype(float).copy()
 
-    # LOLH из "за 20 лет" -> "ч/год"
     if metric_key == "LOLH":
         arr = arr / SIM_YEARS
 
@@ -132,13 +248,17 @@ def transform_metric(metric_key, arr):
 
 
 def battery_capacity_labels(x_raw):
-    # 0.0 -> 0, 0.5 -> 50, 1.0 -> 100
-    return [f"{int(round(v * 100))}" for v in x_raw]
+    return [f"{int(round(v * 1))}" if np.isfinite(v) else "" for v in x_raw] #*100
 
 
 def wt_power_percent_labels(y_raw, wt_count=WT_COUNT, peak_load_kw=PEAK_LOAD_KW):
-    # round((P_one_WT * WT_COUNT / peak_load_kw) * 100)
-    return [f"{int(round(v * wt_count / peak_load_kw * 100))}" for v in y_raw]
+    labels = []
+    for v in y_raw:
+        if np.isfinite(v):
+            labels.append(f"{int(round(v * wt_count / peak_load_kw * 100))}")
+        else:
+            labels.append("")
+    return labels
 
 
 def safe_rel_diff(a, b):
@@ -153,23 +273,30 @@ def safe_rel_diff(a, b):
 
 
 def setup_heatmap_axis(ax, xlabels, ylabels, title, show_xlabel=False, show_ylabel=False):
-    ax.set_title(title, fontsize=12, fontweight="bold")
+    ax.set_title(title, fontsize=TITLE_SIZE, fontweight="bold")
 
     ax.set_xticks(np.arange(len(xlabels)))
-    ax.set_xticklabels(xlabels, fontsize=9)
+    ax.set_xticklabels(
+        xlabels,
+        fontsize=TICK_SIZE,
+        rotation=90,
+        ha="center",
+        va="top"
+    )
 
     ax.set_yticks(np.arange(len(ylabels)))
-    ax.set_yticklabels(ylabels, fontsize=9)
+    ax.set_yticklabels(ylabels, fontsize=TICK_SIZE)
 
     if show_xlabel:
-        ax.set_xlabel("Емкость СНЭ, %", fontsize=10)
+        ax.set_xlabel("Мощность ДГУ, кВт", fontsize=LABEL_SIZE)
     if show_ylabel:
-        ax.set_ylabel("Мощность ВЭУ, %", fontsize=10)
+        ax.set_ylabel("Мощность ВЭУ, %", fontsize=LABEL_SIZE)
 
     ax.set_xticks(np.arange(-0.5, len(xlabels), 1), minor=True)
     ax.set_yticks(np.arange(-0.5, len(ylabels), 1), minor=True)
-    ax.grid(which="minor", color="white", linestyle="-", linewidth=0.7, alpha=0.5)
+    ax.grid(which="minor", color=GRID_COLOR, linestyle="-", linewidth=0.7, alpha=GRID_ALPHA)
     ax.tick_params(which="minor", bottom=False, left=False)
+    ax.tick_params(axis="x", pad=2)
 
 
 def save_individual_figure(metric_label, z1, z2, diff, xlabels, ylabels, out_path):
@@ -178,9 +305,13 @@ def save_individual_figure(metric_label, z1, z2, diff, xlabels, ylabels, out_pat
     common_vmin = np.nanmin([np.nanmin(z1), np.nanmin(z2)])
     common_vmax = np.nanmax([np.nanmax(z1), np.nanmax(z2)])
 
-    im1 = axes[0].imshow(
-        z1, aspect="auto", origin="upper",
-        vmin=common_vmin, vmax=common_vmax, cmap="viridis"
+    axes[0].imshow(
+        z1,
+        aspect="auto",
+        origin="upper",
+        vmin=common_vmin,
+        vmax=common_vmax,
+        cmap=MATTE_METRIC_CMAP
     )
     setup_heatmap_axis(
         axes[0], xlabels, ylabels,
@@ -189,8 +320,12 @@ def save_individual_figure(metric_label, z1, z2, diff, xlabels, ylabels, out_pat
     )
 
     im2 = axes[1].imshow(
-        z2, aspect="auto", origin="upper",
-        vmin=common_vmin, vmax=common_vmax, cmap="viridis"
+        z2,
+        aspect="auto",
+        origin="upper",
+        vmin=common_vmin,
+        vmax=common_vmax,
+        cmap=MATTE_METRIC_CMAP
     )
     setup_heatmap_axis(
         axes[1], xlabels, ylabels,
@@ -203,8 +338,12 @@ def save_individual_figure(metric_label, z1, z2, diff, xlabels, ylabels, out_pat
         lim = 1.0
 
     im3 = axes[2].imshow(
-        diff, aspect="auto", origin="upper",
-        vmin=-lim, vmax=lim, cmap="RdBu_r"
+        diff,
+        aspect="auto",
+        origin="upper",
+        vmin=-lim,
+        vmax=lim,
+        cmap=MATTE_DIFF_CMAP
     )
     setup_heatmap_axis(
         axes[2], xlabels, ylabels,
@@ -213,18 +352,17 @@ def save_individual_figure(metric_label, z1, z2, diff, xlabels, ylabels, out_pat
     )
 
     cbar1 = fig.colorbar(im2, ax=axes[:2], fraction=0.025, pad=0.02)
-    cbar1.ax.set_ylabel(metric_label, rotation=90)
+    cbar1.ax.set_ylabel(metric_label, rotation=90, fontsize=LABEL_SIZE)
+    cbar1.ax.tick_params(labelsize=TICK_SIZE)
 
     cbar2 = fig.colorbar(im3, ax=axes[2], fraction=0.046, pad=0.04)
-    cbar2.ax.set_ylabel("Δ, %", rotation=90)
+    cbar2.ax.set_ylabel("Δ, %", rotation=90, fontsize=LABEL_SIZE)
+    cbar2.ax.tick_params(labelsize=TICK_SIZE)
 
     fig.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
-# =========================
-# ОСНОВНОЙ КОД
-# =========================
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -236,11 +374,9 @@ def main():
     for metric_key, metric_label in METRICS:
         x1_raw, y1_raw, z1, x2_raw, y2_raw, z2 = extract_two_scheme_blocks(ws, metric_key)
 
-        # Преобразование метрик
         z1 = transform_metric(metric_key, z1)
         z2 = transform_metric(metric_key, z2)
 
-        # Проверка совпадения сетки
         if len(x1_raw) != len(x2_raw) or len(y1_raw) != len(y2_raw):
             raise ValueError(f"Размер сеток у схем не совпадает для метрики {metric_key}")
 
@@ -265,6 +401,8 @@ def main():
             "diff": diff,
         })
 
+        safe_name = safe_filename(metric_key)
+
         save_individual_figure(
             metric_label=metric_label,
             z1=z1,
@@ -272,10 +410,9 @@ def main():
             diff=diff,
             xlabels=xlabels,
             ylabels=ylabels,
-            out_path=os.path.join(OUTPUT_DIR, f"{metric_key}_compare.png")
+            out_path=os.path.join(OUTPUT_DIR, f"{safe_name}_compare.png")
         )
 
-    # Сводная фигура: 4 строки × 3 столбца
     fig, axes = plt.subplots(
         len(prepared), 3,
         figsize=(17, 4.2 * len(prepared)),
@@ -296,11 +433,14 @@ def main():
         common_vmin = np.nanmin([np.nanmin(z1), np.nanmin(z2)])
         common_vmax = np.nanmax([np.nanmax(z1), np.nanmax(z2)])
 
-        # Левая панель
         ax = axes[i, 0]
-        im_left = ax.imshow(
-            z1, aspect="auto", origin="upper",
-            vmin=common_vmin, vmax=common_vmax, cmap="viridis"
+        ax.imshow(
+            z1,
+            aspect="auto",
+            origin="upper",
+            vmin=common_vmin,
+            vmax=common_vmax,
+            cmap=MATTE_METRIC_CMAP
         )
         setup_heatmap_axis(
             ax, xlabels, ylabels,
@@ -309,11 +449,14 @@ def main():
             show_ylabel=True
         )
 
-        # Средняя панель
         ax = axes[i, 1]
         im_mid = ax.imshow(
-            z2, aspect="auto", origin="upper",
-            vmin=common_vmin, vmax=common_vmax, cmap="viridis"
+            z2,
+            aspect="auto",
+            origin="upper",
+            vmin=common_vmin,
+            vmax=common_vmax,
+            cmap=MATTE_METRIC_CMAP
         )
         setup_heatmap_axis(
             ax, xlabels, ylabels,
@@ -322,15 +465,18 @@ def main():
             show_ylabel=False
         )
 
-        # Правая панель: относительная разница
         ax = axes[i, 2]
         lim = np.nanmax(np.abs(diff))
         if not np.isfinite(lim) or lim == 0:
             lim = 1.0
 
         im_right = ax.imshow(
-            diff, aspect="auto", origin="upper",
-            vmin=-lim, vmax=lim, cmap="RdBu_r"
+            diff,
+            aspect="auto",
+            origin="upper",
+            vmin=-lim,
+            vmax=lim,
+            cmap=MATTE_DIFF_CMAP
         )
         setup_heatmap_axis(
             ax, xlabels, ylabels,
@@ -340,14 +486,16 @@ def main():
         )
 
         cbar_left = fig.colorbar(im_mid, ax=[axes[i, 0], axes[i, 1]], fraction=0.018, pad=0.015)
-        cbar_left.ax.set_ylabel(metric_label, rotation=90)
+        cbar_left.ax.set_ylabel(metric_label, rotation=90, fontsize=LABEL_SIZE)
+        cbar_left.ax.tick_params(labelsize=TICK_SIZE)
 
         cbar_right = fig.colorbar(im_right, ax=axes[i, 2], fraction=0.046, pad=0.02)
-        cbar_right.ax.set_ylabel("Δ, %", rotation=90)
+        cbar_right.ax.set_ylabel("Δ, %", rotation=90, fontsize=LABEL_SIZE)
+        cbar_right.ax.tick_params(labelsize=TICK_SIZE)
 
     fig.suptitle(
-        "Сравнение схем по критериям надежности\n"
-        "Y: Мощность ВЭУ, %   |   X: Емкость СНЭ, %",
+        ""
+        "",
         fontsize=16,
         fontweight="bold"
     )
@@ -357,6 +505,7 @@ def main():
     plt.close(fig)
 
     print("Готово.")
+    print("Размеры матриц определялись автоматически по Excel.")
     print(f"Сводная фигура: {summary_path}")
     print(f"Отдельные фигуры сохранены в папку: {OUTPUT_DIR}")
 
