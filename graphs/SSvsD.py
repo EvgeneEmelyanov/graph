@@ -19,6 +19,15 @@ PEAK_LOAD_KW = 1346.0
 WT_COUNT = 2
 SIM_YEARS = 20
 
+# Обрезка данных для построения графиков:
+# (сколько убрать сначала, сколько убрать с конца)
+# Примеры:
+# X_TRIM = (0, 0) -> ничего не обрезать
+# X_TRIM = (1, 2) -> убрать 1 первое значение по X и 2 последних
+# Y_TRIM = (0, 1) -> убрать 1 последнее значение по Y
+X_TRIM = (0, 0)
+Y_TRIM = (0, 0)
+
 METRICS = [
     ("LCOE", "LCOE, руб/кВт∙ч"),
     ("LPSP", "LPSP"),
@@ -140,6 +149,49 @@ def safe_filename(name):
     s = re.sub(r'[\\/:*?"<>|]+', "_", s)
     s = s.replace("\n", "_").replace("\r", "_")
     return s
+
+
+def validate_trim(trim, axis_name):
+    if not isinstance(trim, (tuple, list)) or len(trim) != 2:
+        raise ValueError(f"{axis_name}_TRIM должен быть парой из 2 чисел, например (1, 2)")
+    start_trim, end_trim = trim
+    if not isinstance(start_trim, int) or not isinstance(end_trim, int):
+        raise ValueError(f"{axis_name}_TRIM должен содержать целые числа")
+    if start_trim < 0 or end_trim < 0:
+        raise ValueError(f"{axis_name}_TRIM не может содержать отрицательные значения")
+    return start_trim, end_trim
+
+
+def apply_axis_trim(x_raw, y_raw, z, x_trim=(0, 0), y_trim=(0, 0)):
+    """
+    Обрезает данные для построения графика:
+    x_trim = (убрать_слева, убрать_справа)
+    y_trim = (убрать_сверху, убрать_снизу)
+    """
+    x_left, x_right = validate_trim(x_trim, "X")
+    y_top, y_bottom = validate_trim(y_trim, "Y")
+
+    x_len = len(x_raw)
+    y_len = len(y_raw)
+
+    if x_left + x_right >= x_len:
+        raise ValueError(
+            f"Слишком большая обрезка по X: {x_trim}, доступно значений: {x_len}"
+        )
+
+    if y_top + y_bottom >= y_len:
+        raise ValueError(
+            f"Слишком большая обрезка по Y: {y_trim}, доступно значений: {y_len}"
+        )
+
+    x_end = x_len - x_right if x_right > 0 else x_len
+    y_end = y_len - y_bottom if y_bottom > 0 else y_len
+
+    x_raw_cut = x_raw[x_left:x_end]
+    y_raw_cut = y_raw[y_top:y_end]
+    z_cut = z[y_top:y_end, x_left:x_end]
+
+    return x_raw_cut, y_raw_cut, z_cut
 
 
 def find_metric_cells(ws, metric_key):
@@ -268,7 +320,7 @@ def safe_rel_diff(a, b):
     """
     out = np.full_like(a, np.nan, dtype=float)
     mask = np.abs(a) > 1e-12
-    out[mask] = (b[mask] - a[mask]) / a[mask] * 100.0
+    out[mask] = (a[mask] - b[mask]) / a[mask] * 100.0
     return out
 
 
@@ -385,6 +437,9 @@ def main():
 
         if not np.allclose(np.array(y1_raw), np.array(y2_raw), equal_nan=True):
             raise ValueError(f"Ось Y у схем не совпадает для метрики {metric_key}")
+
+        x1_raw, y1_raw, z1 = apply_axis_trim(x1_raw, y1_raw, z1, x_trim=X_TRIM, y_trim=Y_TRIM)
+        x2_raw, y2_raw, z2 = apply_axis_trim(x2_raw, y2_raw, z2, x_trim=X_TRIM, y_trim=Y_TRIM)
 
         xlabels = battery_capacity_labels(x1_raw)
         ylabels = wt_power_percent_labels(y1_raw)
