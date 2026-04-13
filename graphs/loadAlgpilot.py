@@ -4,7 +4,7 @@ matplotlib.use("TkAgg")
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider
+from matplotlib.widgets import Slider, TextBox
 
 
 FILE_PATH = r"D:\adapt_trace.xlsx"
@@ -40,7 +40,11 @@ def load_data_from_xlsx(file_path, sheet_name, limit_rows=None):
     if limit_rows is not None:
         df = df.head(limit_rows).copy()
 
-    df["power_diff"] = df["B1_L"] - df["B1_W"]
+    # Новая логика power_diff:
+    # если B1_B > 0, то вычитаем B1_B
+    # если B1_B <= 0, то не вычитаем
+    df["power_diff"] = df["B1_L"] - df["B1_W"] - np.where(df["B1_B"] > 0, df["B1_B"], 0.0)
+
     df["interval"] = np.arange(1, len(df) + 1)
 
     return df
@@ -52,7 +56,7 @@ def masked_line(y, mask):
     return result
 
 
-def plot_with_two_sliders(df):
+def plot_with_controls(df):
     x = df["interval"].to_numpy()
     y = df["power_diff"].to_numpy()
     battery = df["B1_B"].to_numpy()
@@ -65,23 +69,25 @@ def plot_with_two_sliders(df):
     initial_window = min(INITIAL_WINDOW, n)
     min_window = min(MIN_WINDOW, n)
 
+    current_start = 0
+
     plt.rcParams["toolbar"] = "toolbar2"
 
     fig, ax = plt.subplots(figsize=(16, 8))
-    plt.subplots_adjust(bottom=0.22)
+    plt.subplots_adjust(bottom=0.25)
 
-    line_main, = ax.plot([], [], linewidth=MAIN_LINE_WIDTH, label="B1_L - B1_W")
+    line_main, = ax.plot([], [], linewidth=MAIN_LINE_WIDTH, label="B1_L - B1_W - B1_B(если B1_B > 0)")
     line_discharge, = ax.plot([], [], linewidth=BATTERY_LINE_WIDTH, color="orange", label="АКБ разряд")
     line_charge, = ax.plot([], [], linewidth=BATTERY_LINE_WIDTH, color="green", label="АКБ заряд")
 
-    ax.set_title("Разница мощности B1_L - B1_W с режимами АКБ")
+    ax.set_title("Разница мощности с режимами АКБ")
     ax.set_xlabel("Интервал")
     ax.set_ylabel("Мощность")
     ax.grid(True, alpha=0.3)
     ax.legend(loc="upper right")
 
-    ax_scale = plt.axes([0.12, 0.10, 0.76, 0.03])
-    ax_shift = plt.axes([0.12, 0.05, 0.76, 0.03])
+    ax_scale = plt.axes([0.12, 0.10, 0.55, 0.03])
+    ax_shift_box = plt.axes([0.74, 0.085, 0.14, 0.05])
 
     slider_scale = Slider(
         ax=ax_scale,
@@ -92,26 +98,24 @@ def plot_with_two_sliders(df):
         valstep=1
     )
 
-    slider_shift = Slider(
-        ax=ax_shift,
+    text_shift = TextBox(
+        ax=ax_shift_box,
         label="Сдвиг",
-        valmin=0,
-        valmax=max(0, n - min_window),
-        valinit=0,
-        valstep=1
+        initial="0"
     )
 
-    def update(_=None):
+    def update():
+        nonlocal current_start
+
         window = int(slider_scale.val)
-        start = int(slider_shift.val)
-
         max_start = max(0, n - window)
-        start = min(start, max_start)
-        end = start + window
+        current_start = min(max(0, current_start), max_start)
 
-        xs = x[start:end]
-        ys = y[start:end]
-        bs = battery[start:end]
+        end = current_start + window
+
+        xs = x[current_start:end]
+        ys = y[current_start:end]
+        bs = battery[current_start:end]
 
         if len(xs) == 0:
             return
@@ -138,22 +142,34 @@ def plot_with_two_sliders(df):
             pad = max((y_max - y_min) * 0.08, 1e-6)
             ax.set_ylim(y_min - pad, y_max + pad)
 
+        # Обновляем поле, чтобы там всегда было реальное значение
+        shown_text = text_shift.text.strip()
+        actual_text = str(current_start)
+        if shown_text != actual_text:
+            text_shift.set_val(actual_text)
+
         fig.canvas.draw_idle()
 
     def on_scale_change(val):
-        window = int(val)
+        update()
+
+    def on_shift_submit(text):
+        nonlocal current_start
+
+        try:
+            entered = int(float(text.strip()))
+        except ValueError:
+            text_shift.set_val(str(current_start))
+            return
+
+        window = int(slider_scale.val)
         max_start = max(0, n - window)
 
-        if slider_shift.val > max_start:
-            slider_shift.set_val(max_start)
-        else:
-            update()
-
-    def on_shift_change(val):
+        current_start = min(max(0, entered), max_start)
         update()
 
     slider_scale.on_changed(on_scale_change)
-    slider_shift.on_changed(on_shift_change)
+    text_shift.on_submit(on_shift_submit)
 
     update()
     plt.show()
@@ -162,7 +178,7 @@ def plot_with_two_sliders(df):
 def main():
     df = load_data_from_xlsx(FILE_PATH, SHEET_NAME, LIMIT_ROWS)
     print(f"Загружено строк: {len(df)}")
-    plot_with_two_sliders(df)
+    plot_with_controls(df)
 
 
 if __name__ == "__main__":

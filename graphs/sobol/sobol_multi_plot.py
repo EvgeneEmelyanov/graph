@@ -1,10 +1,12 @@
 import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
+from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.ticker import FuncFormatter
 
 # =====================================================
 # НАСТРОЙКИ (МЕНЯТЬ ЗДЕСЬ)
@@ -17,9 +19,9 @@ COMPARE_MODE = "triptych"   # "triptych" | "bars"
 SCHEMES_ORDER = ["SN", "SS", "D", "H", "1", "2", "3", "4", "5"]
 
 SCHEME_TITLES = {
-    "SN": ["Одиночная", "несекционированная"],
-    "SS": ["Одиночная", "секционированная"],
-    "D":  ["Двойная"],
+    "SN": ["Одиночная", "несекционированная система шин"],
+    "SS": ["Одиночная", "секционированная система шин"],
+    "D":  ["Двойная", "система шин"],
     "H":  ["хехе"],
     "1":  ["1"],
     "2":  ["2"],
@@ -37,26 +39,26 @@ PARAM_LABELS_RU = {
     "WT_POWER": "Мощность одной ВЭУ",
     "WT_COUNT_TOTAL": "Количество ВЭУ",
     "WT_POWER_KW": "Мощность одной ВЭУ",
-    "WT_FAILURE_RATE": "Интенсивность отказов ВЭУ",
+    "WT_FAILURE_RATE": "Наработка на отказ ВЭУ",
     "WT_REPAIR_TIME": "Время восстановления ВЭУ",
     "DG_COUNT": "Количество ДГУ",
     "DG_POWER": "Мощность одного ДГУ",
     "DG_COUNT_TOTAL": "Количество ДГУ",
     "DG_POWER_KW": "Мощность одного ДГУ",
-    "DG_FAILURE_RATE": "Интенсивность отказов ДГУ",
+    "DG_FAILURE_RATE": "Наработка на отказ ДГУ",
     "DG_REPAIR_TIME": "Время восстановления ДГУ",
-    "BT_CAPACITY_PER_BUS": "Емкость СНЭ на одной шине",
-    "BT_CAPACITY_KWH_PER_BUS": "Емкость СНЭ на одной шине",
+    "BT_CAPACITY_PER_BUS": "Емкость СНЭ",
+    "BT_CAPACITY_KWH_PER_BUS": "Емкость СНЭ",
     "BT_MAX_CHARGE_CURRENT": "Максимальный ток заряда СНЭ",
     "BT_MAX_DISCHARGE_CURRENT": "Максимальный ток разряда СНЭ",
-    "BT_NON_RESERVE_DISCHARGE_LVL": "Допустимая глубина разряда СНЭ",
-    "BT_FAILURE_RATE": "Интенсивность отказов СНЭ",
+    "BT_NON_RESERVE_DISCHARGE_LVL": "Минимальный уровень заряда СНЭ",
+    "BT_FAILURE_RATE": "Наработка на отказ СНЭ",
     "BT_REPAIR_TIME": "Время восстановления СНЭ",
-    "BUS_FAILURE_RATE": "Интенсивность отказов шины",
+    "BUS_FAILURE_RATE": "Наработка на отказ шины",
     "BUS_REPAIR_TIME": "Время восстановления шины",
-    "BRK_FAILURE_RATE": "Интенсивность отказов СВ/МШВ",
+    "BRK_FAILURE_RATE": "Наработка на отказ СВ/МШВ",
     "BRK_REPAIR_TIME": "Время восстановления СВ/МШВ",
-    "SWITCHGEAR_ROOM_FAILURE_RATE": "Интенсивность отказов Р",
+    "SWITCHGEAR_ROOM_FAILURE_RATE": "Наработка на отказ Р",
     "SWITCHGEAR_ROOM_REPAIR_TIME": "Время восстановления РУ",
     "BUS_CCF_BETA_SECTIONAL": "Коэф. ООП шин (секционир.) β",
     "BUS_CCF_BETA_DOUBLE": "Коэф. ООП шин (двойная) β",
@@ -71,7 +73,7 @@ PARAM_LABELS_RU = {
     "COST_BT_RUB_PER_KWH_PER_YEAR": "Эксплуатационные затраты СНЭ",
     "DAMAGE_RUB_PER_KWH_CAT1": "Ущерб недоотпуска Cat1 (руб/кВт·ч)",
     "DAMAGE_RUB_PER_KWH_CAT2": "Ущерб недоотпуска Cat2 (руб/кВт·ч)",
-    "DAMAGE_RUB_PER_KWH_CAT3": "Ущерб недоотпуска",
+    "DAMAGE_RUB_PER_KWH_CAT3": "Ущерб от недоотпуска",
 }
 
 USE_RU_PARAM_LABELS = True
@@ -88,10 +90,24 @@ ZERO_EPS = 5e-4
 PREFERRED_METRIC_ORDER = ["LCOE", "LOLE", "ENS", "Fuel", "Moto"]
 
 # =====================================================
+# НАСТРОЙКИ КАЧЕСТВА И СОХРАНЕНИЯ
+# =====================================================
+FIGURE_DPI = 200
+SAVE_DPI = 300
+SAVE_FORMAT = "png"
+
+SAVE_TRIPTYCH_NAME = "sobol_compare_triptych"
+SAVE_BARS_PREFIX = "sobol_compare"
+
+# Папка рядом со скриптом
+OUTPUT_DIR = Path(r"C:\Users\Balt_\Desktop")
+
+plt.rcParams["figure.dpi"] = FIGURE_DPI
+plt.rcParams["savefig.dpi"] = SAVE_DPI
+
+# =====================================================
 # СПОКОЙНАЯ МАТОВАЯ ПАЛИТРА
 # =====================================================
-
-# Для heatmap: светло-серый -> пыльно-синий -> тёмный сине-серый
 MATTE_HEATMAP = LinearSegmentedColormap.from_list(
     "matte_heatmap",
     [
@@ -103,17 +119,16 @@ MATTE_HEATMAP = LinearSegmentedColormap.from_list(
     ],
 )
 
-# Спокойные матовые цвета для bar-графиков
 SCHEME_BAR_COLORS = {
-    "SN": "#c98d5b",  # мягкий оранжево-коричневый
-    "SS": "#4d7a99",  # пыльно-синий
-    "D":  "#6e7f73",  # серо-зелёный
-    "H":  "#8e7c6d",  # тауп
-    "A":  "#8fa8b7",  # светлый стальной
-    "B":  "#b79a7e",  # песочный
-    "C":  "#708c9e",  # серо-синий
-    "4":  "#9b8f99",  # пыльно-лиловый
-    "5":  "#7f8a8f",  # серо-графитовый
+    "SN": "#c98d5b",
+    "SS": "#4d7a99",
+    "D":  "#6e7f73",
+    "H":  "#8e7c6d",
+    "A":  "#8fa8b7",
+    "B":  "#b79a7e",
+    "C":  "#708c9e",
+    "4":  "#9b8f99",
+    "5":  "#7f8a8f",
 }
 
 GRID_COLOR = "#a0a0a0"
@@ -133,13 +148,23 @@ SINGLE_METRIC_PARAM_RE = re.compile(
 )
 
 
-# -------------------------
-# Data structures
-# -------------------------
 @dataclass(frozen=True)
 class SchemeData:
     stats: Dict[str, Dict[str, float]]
     data: Dict[str, Dict[str, Tuple[float, float]]]
+
+
+def ensure_output_dir() -> Path:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    return OUTPUT_DIR
+
+
+def save_figure(fig, filename_no_ext: str) -> Path:
+    out_dir = ensure_output_dir()
+    out_path = out_dir / f"{filename_no_ext}.{SAVE_FORMAT}"
+    fig.savefig(out_path, dpi=SAVE_DPI, bbox_inches="tight")
+    print(f"Сохранено: {out_path}")
+    return out_path
 
 
 # -------------------------
@@ -151,7 +176,7 @@ def parse_number(s: str) -> float:
 
 
 def read_lines_from_console() -> List[str]:
-    print("Вставьте данные (SN/SS/D/H/A/B/C/4/5...), затем ОДНА пустая строка — конец ввода.\n")
+    print("Вставьте данные (SN/SS/D/H/1/2/3/4/5...), затем ОДНА пустая строка — конец ввода.\n")
     lines: List[str] = []
     while True:
         try:
@@ -300,7 +325,7 @@ def parse_multi_scheme_input(lines: List[str]) -> Dict[str, SchemeData]:
         blocks[current_scheme].append(line)
 
     if not blocks:
-        raise ValueError("Не найдено ни одной схемы. Добавьте строку 'SN'/'SS'/'D'/'H'/'A'/'B'/'C'/'4'/'5' перед блоком данных.")
+        raise ValueError("Не найдено ни одной схемы. Добавьте строку 'SN'/'SS'/'D'/'H'/'1'/'2'/'3'/'4'/'5' перед блоком данных.")
 
     parsed: Dict[str, SchemeData] = {}
     for scheme in SCHEMES_ORDER:
@@ -339,6 +364,12 @@ def fmt_stat(metric: str, x: float) -> str:
     return fmt_1dp_trim(scale_stat(metric, x))
 
 
+def comma_tick_2(x, pos):
+    if abs(x) < 1e-12:
+        x = 0.0
+    return f"{x:.1f}".replace(".", ",")
+
+
 # -------------------------
 # Common helpers
 # -------------------------
@@ -352,7 +383,7 @@ def fmt_cell(v: float) -> str:
         return "0"
     if round(v, 2) == 0.0:
         return "0"
-    return f"{v:.2f}"
+    return f"{v:.2f}".replace(".", ",")
 
 
 def param_label(p: str) -> str:
@@ -365,7 +396,7 @@ def build_stats_table_cells(
     stats: Optional[Dict[str, Dict[str, float]]],
     metrics: List[str],
 ) -> Tuple[List[str], List[List[str]]]:
-    row_labels = ["σ", "min", "max"]
+    row_labels = ["min", "max"]
     cell_text = [["" for _ in metrics] for _ in row_labels]
 
     if not stats:
@@ -375,9 +406,8 @@ def build_stats_table_cells(
         if m not in stats:
             continue
         s = stats[m]
-        cell_text[0][j] = fmt_stat(m, s["std"])
-        cell_text[1][j] = fmt_stat(m, s["min"])
-        cell_text[2][j] = fmt_stat(m, s["max"])
+        cell_text[0][j] = fmt_stat(m, s["min"])
+        cell_text[1][j] = fmt_stat(m, s["max"])
 
     return row_labels, cell_text
 
@@ -477,6 +507,10 @@ def draw_scheme_title(ax, lines: List[str], fontsize: int):
         ax.text(0.5, y_mid, lines[0], transform=ax.transAxes, ha="center", va="bottom", fontsize=fontsize)
 
 
+def safe_metric_filename(metric: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_\-]+", "_", metric.strip())
+
+
 # -------------------------
 # Plot modes
 # -------------------------
@@ -501,7 +535,7 @@ def plot_triptych(parsed: Dict[str, SchemeData]):
     vmax = max(vmax, 1e-12)
 
     figsize = figure_size_for_labels(y_labels, ncols=ncols)
-    fig = plt.figure(figsize=figsize, constrained_layout=True)
+    fig = plt.figure(figsize=figsize, dpi=FIGURE_DPI, constrained_layout=True)
 
     gs = fig.add_gridspec(nrows=2, ncols=ncols, height_ratios=[0.72, 2.65])
 
@@ -532,7 +566,15 @@ def plot_triptych(parsed: Dict[str, SchemeData]):
         heatmap_axes.append(ax)
 
         M = Ms[scheme]
-        ax.imshow(M, aspect="auto", cmap=MATTE_HEATMAP, vmin=0.0, vmax=vmax)
+        ax.imshow(
+            M,
+            aspect="auto",
+            cmap=MATTE_HEATMAP,
+            vmin=0.0,
+            vmax=vmax,
+            interpolation="nearest",
+            resample=False,
+        )
 
         ax.set_xticks(np.arange(len(metrics)))
         ax.set_xticklabels(metrics, fontsize=FONT_BASE)
@@ -567,7 +609,10 @@ def plot_triptych(parsed: Dict[str, SchemeData]):
         fraction=0.045,
     )
     cbar.set_label("ST (доля дисперсии)", fontsize=FONT_BASE, labelpad=18)
+    cbar.formatter = FuncFormatter(comma_tick_2)
+    cbar.update_ticks()
 
+    save_figure(fig, SAVE_TRIPTYCH_NAME)
     plt.show()
 
 
@@ -585,7 +630,7 @@ def plot_bars(parsed: Dict[str, SchemeData]):
     for metric in metrics:
         fig_h = max(5.0, len(params) * 0.45 + 1.8)
         fig_w = 11.5
-        fig, ax = plt.subplots(figsize=(fig_w, fig_h), constrained_layout=True)
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=FIGURE_DPI, constrained_layout=True)
 
         y = np.arange(len(params))
 
@@ -632,7 +677,10 @@ def plot_bars(parsed: Dict[str, SchemeData]):
         ax.grid(axis="x", alpha=GRID_ALPHA, color=GRID_COLOR)
         ax.legend(frameon=True)
 
+        ax.xaxis.set_major_formatter(FuncFormatter(comma_tick_2))
         ax.set_xlim(0, max(vmax * 1.10, 0.05))
+
+        save_figure(fig, f"{SAVE_BARS_PREFIX}_{safe_metric_filename(metric)}")
         plt.show()
 
 

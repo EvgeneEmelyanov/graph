@@ -5,8 +5,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.ticker import ScalarFormatter
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+from matplotlib.ticker import FuncFormatter, ScalarFormatter
 from openpyxl import load_workbook
 from openpyxl.utils import range_boundaries
 
@@ -14,32 +13,80 @@ from openpyxl.utils import range_boundaries
 # ============================================================
 # НАСТРОЙКИ
 # ============================================================
-FILE = r"D:\2.xlsx"
+# FILE = r"D:\discharge_current.xlsx"
+FILE = r"D:\reserve_level.xlsx"
 SHEET = "SWEEP_2"
 OUTPUT_DIR = r"D:\results"
 
-# Выбор критерия по номеру
-TARGET_INDEX = 7
+# Выбор критерия по номеру // 1, 2, 3, 4, 5, 8, 9, 10
+TARGET_INDEX = 10
 
 # Типовой размер блока
-MATRIX_RANGE = "A2:J13"
+MATRIX_RANGE = "A2:AH43"
 
-# Подписи осей X/Y
-# X_AXIS_LABEL = "Макс. ток разряда"
-X_AXIS_LABEL = "Остаточный заряд"
+# Режим построения: "3D" или "2D"
+PLOT_MODE = "3D"
+
+# Подписи осей
+X_AXIS_LABEL = "Мин. уровень заряда"
+# X_AXIS_LABEL = "Максимальный ток разряда, С"
 Y_AXIS_LABEL = "Доля емкости СНЭ"
 
-FIGSIZE = (11, 8)
-DPI = 220
+FIGSIZE = (12, 8)
+DPI = 350
 
-# Поворот: на 90° против часовой относительно старого вида
-ELEV = 30
-AZIM = 25
+# Поворот для 3D
+ELEV = 28
+AZIM = 35
 
 SURFACE_ALPHA = 0.98
 EDGE_COLOR = "#6f6f6f"
-EDGE_LINEWIDTH = 0.35
+EDGE_LINEWIDTH = 0.25
 SHOW_COLORBAR = True
+
+# Для 2D
+CONTOUR_LEVELS = 120
+CONTOUR_FILLED = True
+
+# --------------------------------
+# Обрезка данных
+# x_trim = (убрать_слева, убрать_справа)
+# y_trim = (убрать_сверху, убрать_снизу)
+# --------------------------------
+X_TRIM = (0, 0)
+Y_TRIM = (0, 0)
+
+# --------------------------------
+# Прореживание подписей осей
+# --------------------------------
+TICK_STEP_X = 4
+TICK_STEP_Y = 8
+TICK_STEP_Z = 2
+
+# Форматирование подписей
+TICK_LABEL_DECIMALS_X = 3
+TICK_LABEL_DECIMALS_Y = 3
+TICK_LABEL_DECIMALS_Z = 3
+COLORBAR_DECIMALS = 3
+
+# Размеры шрифтов
+TITLE_FONTSIZE = 18
+AXIS_LABEL_FONTSIZE = 16
+TICK_LABEL_FONTSIZE = 13
+COLORBAR_LABEL_FONTSIZE = 15
+COLORBAR_TICK_FONTSIZE = 12
+
+# Отступы подписей
+X_LABELPAD_3D = 10
+Y_LABELPAD_3D = 12
+X_LABELPAD_2D = 10
+Y_LABELPAD_2D = 10
+
+# Поля фигуры
+LEFT_MARGIN = 0.10
+RIGHT_MARGIN = 0.88
+BOTTOM_MARGIN = 0.12
+TOP_MARGIN = 0.96
 
 MATTE_DIFF_CMAP = LinearSegmentedColormap.from_list(
     "matte_diff",
@@ -54,8 +101,6 @@ MATTE_DIFF_CMAP = LinearSegmentedColormap.from_list(
 
 # ============================================================
 # ПОДПИСИ КРИТЕРИЕВ
-# ключ = как в Excel
-# значение = как подписывать на графике / colorbar
 # ============================================================
 METRICS = [
     ("LCOE, руб/кВт∙ч", "LCOE, руб/кВт·ч"),
@@ -64,6 +109,7 @@ METRICS = [
     ("ENS,кВт∙ч", "ENS, кВт·ч"),
     ("LOLH", "LOLH, ч"),
     ("ENS_evtN", "Кол-во событий ENS"),
+    ("ENS_evtAvgH", "ENS_evtAvgH"),
     ("ENS_evtMaxH", "Макс. длит. ENS, ч"),
     ("LOLP", "LOLP"),
     ("LPSP", "LPSP"),
@@ -75,6 +121,15 @@ METRICS = [
 ]
 
 METRIC_LABELS = dict(METRICS)
+
+
+# ============================================================
+# ФОРМАТТЕР ДЛЯ COLORBAR
+# ============================================================
+class CommaScalarFormatter(ScalarFormatter):
+    def __call__(self, x, pos=None):
+        s = super().__call__(x, pos)
+        return s.replace(".", ",")
 
 
 # ============================================================
@@ -135,6 +190,67 @@ def read_matrix_shape(matrix_range: str):
     }
 
 
+def validate_trim(trim, axis_name):
+    if not isinstance(trim, (tuple, list)) or len(trim) != 2:
+        raise ValueError(f"{axis_name}_TRIM должен быть парой из 2 чисел, например (1, 2)")
+    start_trim, end_trim = trim
+    if not isinstance(start_trim, int) or not isinstance(end_trim, int):
+        raise ValueError(f"{axis_name}_TRIM должен содержать целые числа")
+    if start_trim < 0 or end_trim < 0:
+        raise ValueError(f"{axis_name}_TRIM не может содержать отрицательные значения")
+    return start_trim, end_trim
+
+
+def apply_axis_trim(x_raw, y_raw, z, x_trim=(0, 0), y_trim=(0, 0)):
+    x_left, x_right = validate_trim(x_trim, "X")
+    y_top, y_bottom = validate_trim(y_trim, "Y")
+
+    x_len = len(x_raw)
+    y_len = len(y_raw)
+
+    if x_left + x_right >= x_len:
+        raise ValueError(f"Слишком большая обрезка по X: {x_trim}, доступно значений: {x_len}")
+
+    if y_top + y_bottom >= y_len:
+        raise ValueError(f"Слишком большая обрезка по Y: {y_trim}, доступно значений: {y_len}")
+
+    x_end = x_len - x_right if x_right > 0 else x_len
+    y_end = y_len - y_bottom if y_bottom > 0 else y_len
+
+    x_cut = x_raw[x_left:x_end]
+    y_cut = y_raw[y_top:y_end]
+    z_cut = z[y_top:y_end, x_left:x_end]
+
+    return x_cut, y_cut, z_cut
+
+
+def make_tick_values(values, step):
+    if step is None or step < 1:
+        raise ValueError("Шаг прореживания подписей должен быть целым числом >= 1")
+    arr = np.asarray(values, dtype=float)
+    return arr[::step]
+
+
+def format_number_with_comma(value, decimals=3):
+    if np.isnan(value):
+        return ""
+    s = f"{value:.{decimals}f}".rstrip("0").rstrip(".")
+    return s.replace(".", ",")
+
+
+def format_tick_labels(values, decimals=3):
+    return [format_number_with_comma(v, decimals=decimals) for v in values]
+
+
+def comma_formatter(decimals=3):
+    def _formatter(x, pos):
+        if not np.isfinite(x):
+            return ""
+        s = f"{x:.{decimals}f}".rstrip("0").rstrip(".")
+        return s.replace(".", ",")
+    return FuncFormatter(_formatter)
+
+
 def detect_criteria(ws, matrix_range: str):
     shape = read_matrix_shape(matrix_range)
 
@@ -161,20 +277,17 @@ def detect_criteria(ws, matrix_range: str):
 
         ok = True
 
-        # X-подписи
         for c in range(min_col + 1, shape["max_col"] + 1):
             if not is_numeric_like(ws.cell(matrix_start_row, c).value):
                 ok = False
                 break
 
-        # Y-подписи
         if ok:
             for rr in range(matrix_start_row + 1, matrix_end_row + 1):
                 if not is_numeric_like(ws.cell(rr, min_col).value):
                     ok = False
                     break
 
-        # тело матрицы
         if ok:
             for rr in range(matrix_start_row + 1, matrix_end_row + 1):
                 for c in range(min_col + 1, shape["max_col"] + 1):
@@ -222,12 +335,96 @@ def extract_matrix(ws, matrix_start_row: int, matrix_range: str):
     y = np.array(y, dtype=float)
     z = np.array(z, dtype=float)
 
-    X, Y = np.meshgrid(x, y)
-    return x, y, X, Y, z
+    return x, y, z
 
 
-def plot_surface(excel_title, display_title, x, y, X, Y, Z):
+def apply_sparse_z_ticks(ax, step, decimals):
+    all_zticks = np.asarray(ax.get_zticks(), dtype=float)
+    all_zticks = all_zticks[np.isfinite(all_zticks)]
+
+    if len(all_zticks) == 0:
+        return
+
+    sparse_zticks = all_zticks[::step]
+    if len(sparse_zticks) == 0:
+        sparse_zticks = all_zticks
+
+    if all_zticks[-1] not in sparse_zticks:
+        sparse_zticks = np.append(sparse_zticks, all_zticks[-1])
+
+    ax.set_zticks(sparse_zticks)
+    ax.set_zticklabels(
+        format_tick_labels(sparse_zticks, decimals=decimals),
+        fontsize=TICK_LABEL_FONTSIZE
+    )
+
+
+def setup_common_2d_axis(ax, x, y):
+    xticks = make_tick_values(x, TICK_STEP_X)
+    yticks = make_tick_values(y, TICK_STEP_Y)
+
+    ax.set_xticks(xticks)
+    ax.set_yticks(yticks)
+
+    ax.set_xticklabels(
+        format_tick_labels(xticks, decimals=TICK_LABEL_DECIMALS_X),
+        fontsize=TICK_LABEL_FONTSIZE
+    )
+    ax.set_yticklabels(
+        format_tick_labels(yticks, decimals=TICK_LABEL_DECIMALS_Y),
+        fontsize=TICK_LABEL_FONTSIZE
+    )
+
+    ax.set_xlabel(X_AXIS_LABEL, fontsize=AXIS_LABEL_FONTSIZE, labelpad=X_LABELPAD_2D)
+    ax.set_ylabel(Y_AXIS_LABEL, fontsize=AXIS_LABEL_FONTSIZE, labelpad=Y_LABELPAD_2D)
+
+    ax.tick_params(axis="x", labelsize=TICK_LABEL_FONTSIZE, pad=6)
+    ax.tick_params(axis="y", labelsize=TICK_LABEL_FONTSIZE, pad=6)
+
+
+def save_figure(fig, display_title, mode_suffix):
     ensure_dir(OUTPUT_DIR)
+    out_name = safe_filename(f"{display_title}_{mode_suffix}") + ".png"
+    out_path = os.path.join(OUTPUT_DIR, out_name)
+    fig.savefig(out_path, dpi=DPI, bbox_inches="tight", pad_inches=0.08)
+    plt.close(fig)
+    print(f"Готово: {out_path}")
+
+
+def create_colorbar(fig, ax, mappable, display_title, shrink, pad, aspect, labelpad):
+    cbar = fig.colorbar(
+        mappable,
+        ax=ax,
+        shrink=shrink,
+        pad=pad,
+        aspect=aspect
+    )
+
+    formatter = CommaScalarFormatter(useMathText=True)
+    formatter.set_powerlimits((-3, 3))
+    formatter.set_scientific(True)
+
+    cbar.formatter = formatter
+    cbar.update_ticks()
+
+    cbar.ax.tick_params(labelsize=COLORBAR_TICK_FONTSIZE)
+
+    cbar.set_label(
+        display_title,
+        fontsize=COLORBAR_LABEL_FONTSIZE,
+        rotation=90,
+        labelpad=labelpad
+    )
+
+    offset_text = cbar.ax.yaxis.get_offset_text()
+    offset_text.set_size(COLORBAR_TICK_FONTSIZE)
+    offset_text.set_text(offset_text.get_text().replace(".", ","))
+
+    return cbar
+
+
+def plot_3d_surface(display_title, x, y, Z):
+    X, Y = np.meshgrid(x, y)
 
     fig = plt.figure(figsize=FIGSIZE, dpi=DPI)
     ax = fig.add_subplot(111, projection="3d")
@@ -241,34 +438,109 @@ def plot_surface(excel_title, display_title, x, y, X, Y, Z):
         antialiased=True,
     )
 
-    # Заголовок можно оставить как display_title
-    ax.set_title(display_title)
+    xticks = make_tick_values(x, TICK_STEP_X)
+    yticks = make_tick_values(y, TICK_STEP_Y)
 
-    ax.set_xlabel(X_AXIS_LABEL)
-    ax.set_ylabel(Y_AXIS_LABEL)
+    ax.set_xticks(xticks)
+    ax.set_yticks(yticks)
 
-    # ВАЖНО: подпись оси Z не ставим
+    ax.set_xticklabels(
+        format_tick_labels(xticks, decimals=TICK_LABEL_DECIMALS_X),
+        fontsize=TICK_LABEL_FONTSIZE
+    )
+    ax.set_yticklabels(
+        format_tick_labels(yticks, decimals=TICK_LABEL_DECIMALS_Y),
+        fontsize=TICK_LABEL_FONTSIZE
+    )
+
+    ax.set_xlabel(X_AXIS_LABEL, fontsize=AXIS_LABEL_FONTSIZE, labelpad=X_LABELPAD_3D)
+    ax.set_ylabel(Y_AXIS_LABEL, fontsize=AXIS_LABEL_FONTSIZE, labelpad=Y_LABELPAD_3D)
     ax.set_zlabel("")
-    ax.zaxis.label.set_visible(False)
 
     ax.view_init(elev=ELEV, azim=AZIM)
 
-    ax.set_xticks(x)
-    ax.set_yticks(y)
+    ax.tick_params(axis="x", labelsize=TICK_LABEL_FONTSIZE, pad=4)
+    ax.tick_params(axis="y", labelsize=TICK_LABEL_FONTSIZE, pad=4)
+    ax.tick_params(axis="z", labelsize=TICK_LABEL_FONTSIZE, pad=6)
 
-    z_formatter = ScalarFormatter(useMathText=True)
-    z_formatter.set_powerlimits((-3, 4))
-    ax.zaxis.set_major_formatter(z_formatter)
+    apply_sparse_z_ticks(ax, TICK_STEP_Z, TICK_LABEL_DECIMALS_Z)
+    ax.set_box_aspect((1.25, 1.0, 0.75))
+
+    fig.subplots_adjust(
+        left=LEFT_MARGIN,
+        right=RIGHT_MARGIN,
+        bottom=BOTTOM_MARGIN,
+        top=TOP_MARGIN
+    )
 
     if SHOW_COLORBAR:
-        cbar = fig.colorbar(surf, ax=ax, shrink=0.7)
-        cbar.set_label(display_title)
+        create_colorbar(
+            fig=fig,
+            ax=ax,
+            mappable=surf,
+            display_title=display_title,
+            shrink=0.82,
+            pad=0.04,
+            aspect=22,
+            labelpad=16
+        )
 
-    out_path = os.path.join(OUTPUT_DIR, safe_filename(display_title) + ".png")
-    fig.savefig(out_path, bbox_inches="tight")
-    plt.close(fig)
+    save_figure(fig, display_title, "3D")
 
-    print(f"Готово: {out_path}")
+
+def plot_2d_contour(display_title, x, y, Z):
+    X, Y = np.meshgrid(x, y)
+
+    fig, ax = plt.subplots(figsize=FIGSIZE, dpi=DPI)
+
+    if CONTOUR_FILLED:
+        mappable = ax.contourf(
+            X, Y, Z,
+            levels=CONTOUR_LEVELS,
+            cmap=MATTE_DIFF_CMAP
+        )
+    else:
+        mappable = ax.pcolormesh(
+            X, Y, Z,
+            cmap=MATTE_DIFF_CMAP,
+            shading="auto"
+        )
+
+    setup_common_2d_axis(ax, x, y)
+
+    fig.subplots_adjust(
+        left=0.11,
+        right=0.86,
+        bottom=0.12,
+        top=0.96
+    )
+
+    if SHOW_COLORBAR:
+        create_colorbar(
+            fig=fig,
+            ax=ax,
+            mappable=mappable,
+            display_title=display_title,
+            shrink=0.96,
+            pad=0.03,
+            aspect=25,
+            labelpad=14
+        )
+
+    save_figure(fig, display_title, "2D")
+
+
+def plot_metric(excel_title, display_title, x, y, Z):
+    x, y, Z = apply_axis_trim(x, y, Z, x_trim=X_TRIM, y_trim=Y_TRIM)
+
+    mode = str(PLOT_MODE).strip().upper()
+
+    if mode == "3D":
+        plot_3d_surface(display_title, x, y, Z)
+    elif mode == "2D":
+        plot_2d_contour(display_title, x, y, Z)
+    else:
+        raise ValueError('PLOT_MODE должен быть "3D" или "2D"')
 
 
 # ============================================================
@@ -292,20 +564,23 @@ def main():
 
     selected = criteria[TARGET_INDEX - 1]
 
-    print(f"\nВыбран критерий:")
+    print("\nВыбран критерий:")
     print(f"Excel:   {selected['excel_title']}")
     print(f"Подпись: {selected['display_title']}")
+    print(f"Режим:   {PLOT_MODE}")
 
-    x, y, X, Y, Z = extract_matrix(
+    x, y, Z = extract_matrix(
         ws,
         selected["matrix_start_row"],
         MATRIX_RANGE
     )
 
-    plot_surface(
+    plot_metric(
         excel_title=selected["excel_title"],
         display_title=selected["display_title"],
-        x=x, y=y, X=X, Y=Y, Z=Z
+        x=x,
+        y=y,
+        Z=Z
     )
 
 
