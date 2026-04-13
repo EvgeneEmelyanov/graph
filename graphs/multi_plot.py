@@ -13,23 +13,24 @@ from openpyxl.utils import range_boundaries
 # ============================================================
 # НАСТРОЙКИ
 # ============================================================
-# FILE = r"D:\discharge_current.xlsx"
-FILE = r"D:\reserve_level.xlsx"
+FILE = r"D:\discharge_current.xlsx"
+# FILE = r"D:\reserve_level.xlsx"
 SHEET = "SWEEP_2"
 OUTPUT_DIR = r"D:\results"
 
 # Выбор критерия по номеру // 1, 2, 3, 4, 5, 8, 9, 10
-TARGET_INDEX = 10
+TARGET_INDEX = 6
 
 # Типовой размер блока
-MATRIX_RANGE = "A2:AH43"
+MATRIX_RANGE = "A2:T43"
+# MATRIX_RANGE = "A2:AH43"
 
 # Режим построения: "3D" или "2D"
 PLOT_MODE = "3D"
 
 # Подписи осей
-X_AXIS_LABEL = "Мин. уровень заряда"
-# X_AXIS_LABEL = "Максимальный ток разряда, С"
+# X_AXIS_LABEL = "Мин. уровень заряда"
+X_AXIS_LABEL = "Максимальный ток разряда, С"
 Y_AXIS_LABEL = "Доля емкости СНЭ"
 
 FIGSIZE = (12, 8)
@@ -75,6 +76,7 @@ AXIS_LABEL_FONTSIZE = 16
 TICK_LABEL_FONTSIZE = 13
 COLORBAR_LABEL_FONTSIZE = 15
 COLORBAR_TICK_FONTSIZE = 12
+Z_AXIS_SCALE_FONTSIZE = 12
 
 # Отступы подписей
 X_LABELPAD_3D = 10
@@ -87,6 +89,11 @@ LEFT_MARGIN = 0.10
 RIGHT_MARGIN = 0.88
 BOTTOM_MARGIN = 0.12
 TOP_MARGIN = 0.96
+
+# Положение подписи масштаба оси Z (в координатах axes fraction)
+# Можно подвинуть при необходимости
+Z_SCALE_TEXT_X = 0.02
+Z_SCALE_TEXT_Y = 0.67
 
 MATTE_DIFF_CMAP = LinearSegmentedColormap.from_list(
     "matte_diff",
@@ -124,7 +131,7 @@ METRIC_LABELS = dict(METRICS)
 
 
 # ============================================================
-# ФОРМАТТЕР ДЛЯ COLORBAR
+# ФОРМАТТЕРЫ
 # ============================================================
 class CommaScalarFormatter(ScalarFormatter):
     def __call__(self, x, pos=None):
@@ -338,12 +345,44 @@ def extract_matrix(ws, matrix_start_row: int, matrix_range: str):
     return x, y, z
 
 
-def apply_sparse_z_ticks(ax, step, decimals):
+def compute_axis_scale_exponent(values):
+    arr = np.asarray(values, dtype=float)
+    arr = arr[np.isfinite(arr)]
+
+    if arr.size == 0:
+        return 0
+
+    vmax = np.nanmax(np.abs(arr))
+    if vmax == 0 or not np.isfinite(vmax):
+        return 0
+
+    exp = int(np.floor(np.log10(vmax)))
+
+    if -3 < exp < 3:
+        return 0
+
+    return exp
+
+
+def build_scaled_comma_formatter(scale_exp, decimals=3):
+    scale = 10 ** scale_exp
+
+    def _formatter(x, pos):
+        if not np.isfinite(x):
+            return ""
+        v = x / scale
+        s = f"{v:.{decimals}f}".rstrip("0").rstrip(".")
+        return s.replace(".", ",")
+
+    return FuncFormatter(_formatter)
+
+
+def apply_sparse_z_ticks_and_scale(ax, z_values, step, decimals):
     all_zticks = np.asarray(ax.get_zticks(), dtype=float)
     all_zticks = all_zticks[np.isfinite(all_zticks)]
 
     if len(all_zticks) == 0:
-        return
+        return 0
 
     sparse_zticks = all_zticks[::step]
     if len(sparse_zticks) == 0:
@@ -353,9 +392,30 @@ def apply_sparse_z_ticks(ax, step, decimals):
         sparse_zticks = np.append(sparse_zticks, all_zticks[-1])
 
     ax.set_zticks(sparse_zticks)
-    ax.set_zticklabels(
-        format_tick_labels(sparse_zticks, decimals=decimals),
-        fontsize=TICK_LABEL_FONTSIZE
+
+    z_exp = compute_axis_scale_exponent(z_values)
+    z_formatter = build_scaled_comma_formatter(z_exp, decimals=decimals)
+    ax.zaxis.set_major_formatter(z_formatter)
+
+    ax.tick_params(axis="z", labelsize=TICK_LABEL_FONTSIZE, pad=6)
+
+    return z_exp
+
+
+def add_manual_z_scale_text(ax, exponent):
+    if exponent == 0:
+        return
+
+    scale_text = rf"$\times 10^{{{exponent}}}$"
+
+    ax.text2D(
+        Z_SCALE_TEXT_X,
+        Z_SCALE_TEXT_Y,
+        scale_text,
+        transform=ax.transAxes,
+        fontsize=Z_AXIS_SCALE_FONTSIZE,
+        ha="left",
+        va="bottom"
     )
 
 
@@ -418,7 +478,6 @@ def create_colorbar(fig, ax, mappable, display_title, shrink, pad, aspect, label
 
     offset_text = cbar.ax.yaxis.get_offset_text()
     offset_text.set_size(COLORBAR_TICK_FONTSIZE)
-    offset_text.set_text(offset_text.get_text().replace(".", ","))
 
     return cbar
 
@@ -463,7 +522,13 @@ def plot_3d_surface(display_title, x, y, Z):
     ax.tick_params(axis="y", labelsize=TICK_LABEL_FONTSIZE, pad=4)
     ax.tick_params(axis="z", labelsize=TICK_LABEL_FONTSIZE, pad=6)
 
-    apply_sparse_z_ticks(ax, TICK_STEP_Z, TICK_LABEL_DECIMALS_Z)
+    z_exp = apply_sparse_z_ticks_and_scale(
+        ax=ax,
+        z_values=Z,
+        step=TICK_STEP_Z,
+        decimals=TICK_LABEL_DECIMALS_Z
+    )
+
     ax.set_box_aspect((1.25, 1.0, 0.75))
 
     fig.subplots_adjust(
@@ -484,6 +549,14 @@ def plot_3d_surface(display_title, x, y, Z):
             aspect=22,
             labelpad=16
         )
+
+    fig.canvas.draw()
+
+    # Скрываем стандартный offset у оси Z, чтобы не мешал
+    ax.zaxis.get_offset_text().set_visible(False)
+
+    # Добавляем свою подпись масштаба левее и над осью Z
+    add_manual_z_scale_text(ax, z_exp)
 
     save_figure(fig, display_title, "3D")
 
