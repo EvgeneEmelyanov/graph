@@ -19,10 +19,10 @@ INPUT_FILES = [
 
 OUTPUT_DIR = Path(r"C:\Users\Balt_\Desktop")
 
-# какие метрики строить отдельными графиками
+# Какие метрики строить отдельными графиками
 TARGET_METRICS = ["LCOE", "LPSP", "LOLP"]
 
-# если в файлах вдруг вместо LPSP/LOLP окажутся другие имена, можно задать замену
+# Если в файлах вместо LPSP/LOLP другие имена
 METRIC_ALIASES = {
     "LCOE": ["LCOE"],
     "LPSP": ["ENS"],
@@ -112,6 +112,21 @@ GRID_ALPHA = 0.28
 
 ZERO_EPS = 5e-4
 
+# Общая шкала по оси Y:
+# "auto_common" -> общий максимум по всем метрикам, но не больше 1.0
+# "fixed"       -> использовать Y_FIXED_MAX, но тоже не больше 1.0
+Y_SCALE_MODE = "auto_common"
+Y_FIXED_MAX = 1.0
+
+# Верхний запас под подписи групп внутри шкалы
+GROUP_LABEL_Y_FACTOR = 0.96
+
+# Число основных делений по оси Y
+Y_TICK_COUNT = 6
+
+# Физический предел для Sobol ST
+ST_HARD_MAX = 1.0
+
 plt.rcParams["figure.dpi"] = FIGURE_DPI
 plt.rcParams["savefig.dpi"] = SAVE_DPI
 plt.rcParams["font.family"] = "DejaVu Sans"
@@ -194,11 +209,13 @@ def parse_number(s: str) -> float:
     s = s.strip().replace("\u00a0", "").replace(" ", "").replace(",", ".")
     return float(s)
 
+
 def read_text_file(path: Path) -> List[str]:
     if not path.exists():
         raise FileNotFoundError(f"Файл не найден: {path}")
     text = path.read_text(encoding="utf-8-sig")
     return [line.rstrip("\n").rstrip("\r") for line in text.splitlines()]
+
 
 def split_stats_and_body(lines: List[str]) -> Tuple[List[str], List[str]]:
     idx: Optional[int] = None
@@ -212,6 +229,7 @@ def split_stats_and_body(lines: List[str]) -> Tuple[List[str], List[str]]:
     if idx is None:
         return lines, []
     return lines[:idx], lines[idx:]
+
 
 def parse_metric_stats(lines_stats: List[str]) -> Dict[str, Dict[str, float]]:
     stats: Dict[str, Dict[str, float]] = {}
@@ -227,6 +245,7 @@ def parse_metric_stats(lines_stats: List[str]) -> Dict[str, Dict[str, float]]:
             "max": parse_number(m.group("max")),
         }
     return stats
+
 
 def parse_format2_table(lines_body: List[str]) -> Dict[str, Dict[str, Tuple[float, float]]]:
     header = lines_body[0].strip().split()
@@ -265,6 +284,7 @@ def parse_format2_table(lines_body: List[str]) -> Dict[str, Dict[str, Tuple[floa
         raise ValueError("Не найдено ни одной строки с параметрами (табличный формат)")
     return data
 
+
 def choose_single_metric_name(stats: Dict[str, Dict[str, float]]) -> str:
     if "LCOE" in stats:
         return "LCOE"
@@ -273,6 +293,7 @@ def choose_single_metric_name(stats: Dict[str, Dict[str, float]]) -> str:
     if len(stats) == 0:
         return "LCOE"
     return sorted(stats.keys())[0]
+
 
 def parse_format1_single_metric(
     lines_body: List[str],
@@ -294,6 +315,7 @@ def parse_format1_single_metric(
         raise ValueError("Не найдено строк PARAM S=.. ST=.. (формат одной метрики)")
     return data
 
+
 def parse_body_auto(
     lines_body: List[str],
     stats: Dict[str, Dict[str, float]]
@@ -309,6 +331,7 @@ def parse_body_auto(
         return parse_format2_table(lines_body)
     metric_name = choose_single_metric_name(stats)
     return parse_format1_single_metric(lines_body, metric_name)
+
 
 def parse_multi_scheme_input(lines: List[str]) -> Dict[str, SchemeData]:
     blocks: Dict[str, List[str]] = {}
@@ -340,6 +363,7 @@ def parse_multi_scheme_input(lines: List[str]) -> Dict[str, SchemeData]:
     if not parsed:
         raise ValueError("Не удалось распарсить данные ни по одной схеме.")
     return parsed
+
 
 def merge_scheme_dicts(parts: List[Dict[str, SchemeData]]) -> Dict[str, SchemeData]:
     merged: Dict[str, SchemeData] = {}
@@ -375,8 +399,12 @@ def ensure_output_dir() -> Path:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     return OUTPUT_DIR
 
+
 def zeroize(v: float) -> float:
-    return 0.0 if (v <= 0.0 or abs(v) < ZERO_EPS) else v
+    if v <= 0.0 or abs(v) < ZERO_EPS:
+        return 0.0
+    return min(v, ST_HARD_MAX)
+
 
 def comma_tick(x, pos):
     if abs(x) < 1e-12:
@@ -388,11 +416,14 @@ def comma_tick(x, pos):
         s = s[:-1]
     return s
 
+
 def param_label(code: str) -> str:
     return PARAM_LABELS_RU.get(code, code)
 
+
 def get_present_schemes(parsed: Dict[str, SchemeData]) -> List[str]:
     return [s for s in SCHEMES_ORDER if s in parsed and s in ("SS", "D")]
+
 
 def resolve_metric_name_for_scheme(scheme_data: SchemeData, target_metric: str) -> Optional[str]:
     aliases = METRIC_ALIASES.get(target_metric, [target_metric])
@@ -404,6 +435,7 @@ def resolve_metric_name_for_scheme(scheme_data: SchemeData, target_metric: str) 
         if candidate in scheme_data.stats:
             return candidate
     return None
+
 
 def collect_rows_for_metric(parsed: Dict[str, SchemeData], target_metric: str):
     schemes = get_present_schemes(parsed)
@@ -448,6 +480,7 @@ def collect_rows_for_metric(parsed: Dict[str, SchemeData], target_metric: str):
 
     return rows
 
+
 def save_figure(fig, metric_name: str) -> Path:
     ensure_output_dir()
     out_path = OUTPUT_DIR / f"sobol_{metric_name}.png"
@@ -455,11 +488,59 @@ def save_figure(fig, metric_name: str) -> Path:
     print(f"Сохранено: {out_path}")
     return out_path
 
+
+def collect_metric_peak(parsed: Dict[str, SchemeData], metric_name: str) -> float:
+    rows = collect_rows_for_metric(parsed, metric_name)
+    peak = 0.0
+    for _, _, vals in rows:
+        for v in vals.values():
+            peak = max(peak, zeroize(v))
+    return peak
+
+
+def compute_common_ymax(parsed: Dict[str, SchemeData], metrics: List[str]) -> float:
+    if Y_SCALE_MODE == "fixed":
+        if Y_FIXED_MAX <= 0:
+            raise ValueError("Y_FIXED_MAX должен быть > 0")
+        return min(float(Y_FIXED_MAX), ST_HARD_MAX)
+
+    common_peak = 0.0
+    for metric_name in metrics:
+        common_peak = max(common_peak, collect_metric_peak(parsed, metric_name))
+
+    common_peak = max(common_peak, 0.05)
+
+    # Верх не может быть больше 1.0
+    common_peak = min(common_peak, ST_HARD_MAX)
+
+    # Если максимум близко к 1, сразу ставим ровно 1
+    if common_peak >= 0.8:
+        return 1.0
+
+    # Иначе округляем вверх до удобного значения, но не выше 1
+    if common_peak <= 0.1:
+        step = 0.02
+    elif common_peak <= 0.25:
+        step = 0.05
+    elif common_peak <= 0.5:
+        step = 0.1
+    else:
+        step = 0.2
+
+    ymax = np.ceil(common_peak / step) * step
+    ymax = min(float(ymax), ST_HARD_MAX)
+    return ymax
+
+
+def compute_group_label_y(common_ymax: float) -> float:
+    return common_ymax * GROUP_LABEL_Y_FACTOR
+
+
 # =====================================================
 # PLOT
 # =====================================================
 
-def plot_metric(parsed: Dict[str, SchemeData], metric_name: str) -> None:
+def plot_metric(parsed: Dict[str, SchemeData], metric_name: str, common_ymax: float) -> None:
     schemes = get_present_schemes(parsed)
     if not schemes:
         raise ValueError("Нет схем SS/D для построения.")
@@ -499,12 +580,6 @@ def plot_metric(parsed: Dict[str, SchemeData], metric_name: str) -> None:
         end_x = x - 1.0
         group_meta.append((group_name, start_x, end_x))
 
-    max_val = 0.0
-    for s in schemes:
-        if values_by_scheme[s]:
-            max_val = max(max_val, max(values_by_scheme[s]))
-    max_val = max(max_val, 0.05)
-
     fig_w = max(14.0, len(x_labels) * 0.55)
     fig_h = 7.2
     fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=FIGURE_DPI)
@@ -537,11 +612,12 @@ def plot_metric(parsed: Dict[str, SchemeData], metric_name: str) -> None:
     ax.set_xticks(x_positions)
     ax.set_xticklabels(x_labels, rotation=58, ha="right", fontsize=FONT_SMALL)
 
+    group_label_y = compute_group_label_y(common_ymax)
     for i, (group_name, start_x, end_x) in enumerate(group_meta):
         x_center = (start_x + end_x) / 2.0
         ax.text(
             x_center,
-            max_val * 1.14,
+            group_label_y,
             group_name,
             ha="center",
             va="bottom",
@@ -554,7 +630,12 @@ def plot_metric(parsed: Dict[str, SchemeData], metric_name: str) -> None:
     ax.set_ylabel("ST (доля дисперсии)", fontsize=FONT_BASE)
     ax.set_title(f"Чувствительность параметров по метрике {metric_name}", fontsize=TITLE_FONT)
 
-    ax.set_ylim(0, max_val * 1.24)
+    # Одинаковая и физически корректная шкала 0..common_ymax, где common_ymax <= 1
+    ax.set_ylim(0, common_ymax)
+
+    # Одинаковые деления оси Y
+    ax.set_yticks(np.linspace(0, common_ymax, Y_TICK_COUNT))
+
     ax.grid(axis="y", alpha=GRID_ALPHA, color=GRID_COLOR, zorder=1)
     ax.yaxis.set_major_formatter(FuncFormatter(comma_tick))
 
@@ -573,6 +654,7 @@ def plot_metric(parsed: Dict[str, SchemeData], metric_name: str) -> None:
     save_figure(fig, metric_name)
     plt.show()
 
+
 # =====================================================
 # MAIN
 # =====================================================
@@ -590,8 +672,12 @@ def main():
     schemes = get_present_schemes(parsed)
     print("Найдены схемы:", ", ".join(schemes) if schemes else "нет")
 
+    common_ymax = compute_common_ymax(parsed, TARGET_METRICS)
+    print(f"Общий верхний предел оси Y: {common_ymax}")
+
     for metric in TARGET_METRICS:
-        plot_metric(parsed, metric)
+        plot_metric(parsed, metric, common_ymax)
+
 
 if __name__ == "__main__":
     main()
