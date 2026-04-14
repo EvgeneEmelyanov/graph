@@ -2,6 +2,7 @@ import csv
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter
 
 
@@ -25,43 +26,81 @@ CSV_FILE = r"D:\1adaptive_tune.csv"
 # Время моделирования для перевода LOLH -> LOLP
 SIM_HOURS = 175320.0
 
+# Мягкие, приглушённые, но разные цвета
+SOFT_COLORS = [
+    "#426f91",  # мягкий синий
+    "#c95f46",  # мягкий терракотовый
+    "#6f8f72",  # мягкий зелёный
+    "#8a6f9e",  # мягкий фиолетовый
+    "#b2875a",  # мягкий охристый
+    "#5f8f96",  # мягкий бирюзовый
+    "#b06c7a",  # мягкий розово-коричневый
+    "#7d7f8c",  # мягкий серо-синий
+    "#9a845f",  # мягкий песочный
+    "#5d7a66",  # мягкий оливковый
+]
+
 FRONTS = [
     {
         "label": "run_1",
         "csv": r"D:\1adaptive_tune.csv",
-        "color": "#426f91",
+        "color": SOFT_COLORS[0],
         # "baseline_lcoe": 28.501221,
         # "baseline_lolh": 9.666667,
     },
     {
         "label": "run_2",
         "csv": r"D:\2adaptive_tune.csv",
-        "color": "#c95f46",
+        "color": SOFT_COLORS[1],
     },
+    {
+        "label": "run_3",
+        "csv": r"D:\3adaptive_tune.csv",
+        "color": SOFT_COLORS[2],
+    },
+    # {
+    #     "label": "run_4",
+    #     "csv": r"D:\4adaptive_tune.csv",
+    #     "color": SOFT_COLORS[3],
+    # },
+    # {
+    #     "label": "run_5",
+    #     "csv": r"D:\5adaptive_tune.csv",
+    #     "color": SOFT_COLORS[4],
+    # },
+    # {
+    #     "label": "run_6",
+    #     "csv": r"D:\6adaptive_tune.csv",
+    #     "color": SOFT_COLORS[5],
+    # },
+    # {
+    #     "label": "run_7",
+    #     "csv": r"D:\7adaptive_tune.csv",
+    #     "color": SOFT_COLORS[6],
+    # },
+    # {
+    #     "label": "run_8",
+    #     "csv": r"D:\8adaptive_tune.csv",
+    #     "color": SOFT_COLORS[7],
+    # },
+    # {
+    #     "label": "run_9",
+    #     "csv": r"D:\9adaptive_tune.csv",
+    #     "color": SOFT_COLORS[8],
+    # },
+    # {
+    #     "label": "run_10",
+    #     "csv": r"D:\10adaptive_tune.csv",
+    #     "color": SOFT_COLORS[9],
+    # },
 ]
 
 
 # ============================================================
 # ФОРМАТ ЧИСЕЛ
-# ОСИ: 1 ЗНАК ПОСЛЕ ЗАПЯТОЙ
 # ============================================================
 def comma_formatter(x, pos):
     return f"{x:.1f}".replace(".", ",")
-
-
-# ============================================================
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-# ============================================================
-def parse_float(s: str) -> float:
-    return float(s.replace(",", "."))
-
-
-def parse_bool(s: str) -> bool:
-    return s.strip().lower() == "true"
-
-
-def lolh_to_lolp(lolh_hours: float) -> float:
-    return lolh_hours / SIM_HOURS
 
 
 def sci_1_decimal(value: float) -> str:
@@ -83,13 +122,37 @@ def sci_1_decimal(value: float) -> str:
 
     mantissa = round(v, 1)
 
-    # если после округления получилось 10,0
     if mantissa >= 10.0:
         mantissa = 1.0
         exp += 1
 
     sign = "-" if value < 0 else ""
     return f"{sign}{mantissa:.1f}·10^{exp}".replace(".", ",")
+
+
+def y_formatter(x, pos):
+    if x == 0:
+        return "0"
+
+    if abs(x) < 0.1:
+        return sci_1_decimal(x)
+
+    return f"{x:.1f}".replace(".", ",")
+
+
+# ============================================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ============================================================
+def parse_float(s: str) -> float:
+    return float(s.replace(",", "."))
+
+
+def parse_bool(s: str) -> bool:
+    return s.strip().lower() == "true"
+
+
+def lolh_to_lolp(lolh_hours: float) -> float:
+    return lolh_hours / SIM_HOURS
 
 
 def load_csv(path: str):
@@ -162,7 +225,7 @@ def prepare_fronts():
             {
                 "label": Path(CSV_FILE).stem,
                 "csv": CSV_FILE,
-                "color": "#426f91",
+                "color": SOFT_COLORS[0],
             }
         ]
 
@@ -217,36 +280,9 @@ if not fronts:
 if all(len(f["rows"]) == 0 for f in fronts):
     raise ValueError("Во всех CSV нет данных для построения.")
 
-plt.figure(figsize=(11, 8))
-ax = plt.gca()
+fig, ax = plt.subplots(figsize=(11, 8))
 
 ax.xaxis.set_major_formatter(FuncFormatter(comma_formatter))
-def y_formatter(x, pos):
-    if x == 0:
-        return "0"
-
-    # если число "обычное"
-    if abs(x) >= 0.1:
-        return f"{x:.1f}".replace(".", ",")
-
-    # научная запись
-    exp = 0
-    v = abs(x)
-
-    while v < 1.0:
-        v *= 10.0
-        exp -= 1
-
-    mantissa = round(v, 1)
-
-    if mantissa >= 10.0:
-        mantissa = 1.0
-        exp += 1
-
-    sign = "-" if x < 0 else ""
-    return f"{sign}{mantissa:.1f}·10^{exp}".replace(".", ",")
-
-
 ax.yaxis.set_major_formatter(FuncFormatter(y_formatter))
 
 single_mode = not MULTI_FRONT_MODE
@@ -257,7 +293,6 @@ for front in fronts:
     rows = front["rows"]
     pareto = front["pareto"]
     color = front["color"]
-    label = front["label"]
 
     if not rows:
         continue
@@ -268,35 +303,31 @@ for front in fronts:
     x_p = [r["LCOE"] for r in pareto]
     y_p = [r["LOLP_FROM_LOLH"] for r in pareto]
 
-    all_label = "Все решения" if single_mode else f"{label}: все решения"
-    pareto_label = "Pareto" if single_mode else f"{label}: Pareto"
-    baseline_label = "Базовый вариант" if single_mode else f"{label}: baseline"
-
-    plt.scatter(
+    # Все решения
+    ax.scatter(
         x_all,
         y_all,
         s=42,
         alpha=0.22,
-        color=color,
-        label=all_label
+        color=color
     )
 
+    # Pareto-фронт
     if pareto:
-        plt.plot(
+        ax.plot(
             x_p,
             y_p,
             marker="o",
             markersize=6,
             linewidth=2.5,
-            color=color,
-            label=pareto_label
+            color=color
         )
 
     # Подписи Pareto-точек только в single mode
     if show_pareto_labels_now:
         for i, r in enumerate(pareto, start=1):
             txt = f"#{i}\n{r['LCOE']:.2f} / {sci_1_decimal(r['LOLP_FROM_LOLH'])}".replace(".", ",")
-            plt.annotate(
+            ax.annotate(
                 txt,
                 (r["LCOE"], r["LOLP_FROM_LOLH"]),
                 textcoords="offset points",
@@ -309,21 +340,20 @@ for front in fronts:
     baseline_lolp = front["baseline_lolp"]
 
     if baseline_lcoe is not None and baseline_lolp is not None:
-        plt.scatter(
+        ax.scatter(
             [baseline_lcoe],
             [baseline_lolp],
             s=130,
             marker="X",
             color=color,
             edgecolors="black",
-            linewidths=0.8,
-            label=baseline_label
+            linewidths=0.8
         )
 
         # Подпись baseline только в single mode
         if show_baseline_labels_now:
             base_txt = f"baseline\n{baseline_lcoe:.2f} / {sci_1_decimal(baseline_lolp)}".replace(".", ",")
-            plt.annotate(
+            ax.annotate(
                 base_txt,
                 (baseline_lcoe, baseline_lolp),
                 textcoords="offset points",
@@ -332,15 +362,45 @@ for front in fronts:
                 color=color
             )
 
-plt.xlabel("LCOE, руб/кВт·ч")
-plt.ylabel("LOLP")
-plt.grid(True, alpha=0.3)
-plt.legend()
-plt.tight_layout()
+ax.set_xlabel("LCOE, руб/кВт·ч")
+ax.set_ylabel("LOLP")
+ax.grid(True, alpha=0.3)
+
+# ============================================================
+# ДВЕ ЛЕГЕНДЫ
+# ============================================================
+style_handles = [
+    Line2D([0], [0], color="black", linewidth=2.5, marker="o", markersize=6, label="Pareto-фронт"),
+    Line2D([0], [0], color="black", linestyle="None", marker="o", markersize=6, alpha=0.35, label="Все решения"),
+    Line2D([0], [0], color="black", linestyle="None", marker="X", markersize=10, label="Базовый вариант"),
+]
+
+color_handles = []
+for front in fronts:
+    color_handles.append(
+        Line2D([0], [0], color=front["color"], linewidth=2.5, label=front["label"])
+    )
+
+legend1 = ax.legend(
+    handles=style_handles,
+    loc="upper left",
+    bbox_to_anchor=(0.7, 0.99),
+    frameon=True
+)
+ax.add_artist(legend1)
+
+legend2 = ax.legend(
+    handles=color_handles,
+    loc="upper right",
+    bbox_to_anchor=(0.99, 0.99),
+    frameon=True
+)
+
+fig.tight_layout()
 
 output_path = Path(OUTPUT_PNG)
 output_path.parent.mkdir(parents=True, exist_ok=True)
-plt.savefig(output_path, dpi=FIG_DPI, bbox_inches="tight")
+fig.savefig(output_path, dpi=FIG_DPI, bbox_inches="tight")
 plt.show()
 
 print(f"Готово: {output_path}")
