@@ -21,7 +21,7 @@ MULTI_FRONT_MODE = True
 # Если False, Pareto-фронт строится по всем точкам
 PARETO_ONLY_ON_FEASIBLE = False
 
-CSV_FILE = r"D:\1adaptive_tune.csv"
+CSV_FILE = r"D:\1C_adaptive_tune.csv"
 
 # Время моделирования для перевода LOLH -> LOLP
 SIM_HOURS = 175320.0
@@ -41,56 +41,54 @@ SOFT_COLORS = [
 ]
 
 FRONTS = [
+    # {
+    #     "label": "ВЭУ 75%",
+    #     "csv": r"D:\75_adaptive_tune.csv",
+    #     "color": SOFT_COLORS[0],
+    # },
     {
-        "label": "run_1",
-        "csv": r"D:\1adaptive_tune.csv",
-        "color": SOFT_COLORS[0],
-        # "baseline_lcoe": 28.501221,
-        # "baseline_lolh": 9.666667,
-    },
-    {
-        "label": "run_2",
-        "csv": r"D:\2adaptive_tune.csv",
+        "label": "ВЭУ 100%",
+        "csv": r"D:\100_adaptive_tune.csv",
         "color": SOFT_COLORS[1],
     },
     {
-        "label": "run_3",
-        "csv": r"D:\3adaptive_tune.csv",
+        "label": "ВЭУ 150%",
+        "csv": r"D:\150_adaptive_tune.csv",
         "color": SOFT_COLORS[2],
     },
+    {
+        "label": "ВЭУ 200%",
+        "csv": r"D:\200_adaptive_tune.csv",
+        "color": SOFT_COLORS[3],
+    },
+    {
+        "label": "ВЭУ 250%",
+        "csv": r"D:\250_adaptive_tune.csv",
+        "color": SOFT_COLORS[4],
+    },
+    {
+        "label": "ВЭУ 300%",
+        "csv": r"D:\300_adaptive_tune.csv",
+        "color": SOFT_COLORS[5],
+    },
     # {
-    #     "label": "run_4",
-    #     "csv": r"D:\4adaptive_tune.csv",
-    #     "color": SOFT_COLORS[3],
-    # },
-    # {
-    #     "label": "run_5",
-    #     "csv": r"D:\5adaptive_tune.csv",
-    #     "color": SOFT_COLORS[4],
-    # },
-    # {
-    #     "label": "run_6",
-    #     "csv": r"D:\6adaptive_tune.csv",
-    #     "color": SOFT_COLORS[5],
-    # },
-    # {
-    #     "label": "run_7",
-    #     "csv": r"D:\7adaptive_tune.csv",
+    #     "label": "ВЭУ 125%",
+    #     "csv": r"D:\125_adaptive_tune.csv",
     #     "color": SOFT_COLORS[6],
     # },
     # {
-    #     "label": "run_8",
-    #     "csv": r"D:\8adaptive_tune.csv",
+    #     "label": "ВЭУ 175%",
+    #     "csv": r"D:\175_adaptive_tune.csv",
     #     "color": SOFT_COLORS[7],
     # },
     # {
-    #     "label": "run_9",
-    #     "csv": r"D:\9adaptive_tune.csv",
+    #     "label": "ВЭУ 225%",
+    #     "csv": r"D:\225_adaptive_tune.csv",
     #     "color": SOFT_COLORS[8],
     # },
     # {
-    #     "label": "run_10",
-    #     "csv": r"D:\10adaptive_tune.csv",
+    #     "label": "ВЭУ 275%",
+    #     "csv": r"D:\275_adaptive_tune.csv",
     #     "color": SOFT_COLORS[9],
     # },
 ]
@@ -127,7 +125,8 @@ def sci_1_decimal(value: float) -> str:
         exp += 1
 
     sign = "-" if value < 0 else ""
-    return f"{sign}{mantissa:.1f}·10^{exp}".replace(".", ",")
+    exp_str = to_superscript(exp)
+    return f"{sign}{mantissa:.1f}·10{exp_str}".replace(".", ",")
 
 
 def y_formatter(x, pos):
@@ -268,6 +267,14 @@ def prepare_fronts():
 
     return prepared
 
+def to_superscript(n: int) -> str:
+    sup_map = {
+        "-": "⁻",
+        "0": "⁰", "1": "¹", "2": "²", "3": "³",
+        "4": "⁴", "5": "⁵", "6": "⁶",
+        "7": "⁷", "8": "⁸", "9": "⁹",
+    }
+    return "".join(sup_map[c] for c in str(n))
 
 # ============================================================
 # ОСНОВНОЙ КОД
@@ -362,15 +369,16 @@ for front in fronts:
                 color=color
             )
 
-ax.set_xlabel("LCOE, руб/кВт·ч")
-ax.set_ylabel("LOLP")
+ax.set_xlabel("LCOE, руб/кВт·ч", fontsize=16)
+ax.set_ylabel("LOLP", fontsize=16)
+ax.tick_params(axis="both", labelsize=16)
 ax.grid(True, alpha=0.3)
 
 # ============================================================
 # ДВЕ ЛЕГЕНДЫ
 # ============================================================
 style_handles = [
-    Line2D([0], [0], color="black", linewidth=2.5, marker="o", markersize=6, label="Pareto-фронт"),
+    Line2D([0], [0], color="black", linewidth=2.5, marker="o", markersize=6, label="Парето-фронт"),
     Line2D([0], [0], color="black", linestyle="None", marker="o", markersize=6, alpha=0.35, label="Все решения"),
     Line2D([0], [0], color="black", linestyle="None", marker="X", markersize=10, label="Базовый вариант"),
 ]
@@ -384,7 +392,8 @@ for front in fronts:
 legend1 = ax.legend(
     handles=style_handles,
     loc="upper left",
-    bbox_to_anchor=(0.7, 0.99),
+    bbox_to_anchor=(0.69, 0.99),
+    fontsize=14,
     frameon=True
 )
 ax.add_artist(legend1)
@@ -392,7 +401,8 @@ ax.add_artist(legend1)
 legend2 = ax.legend(
     handles=color_handles,
     loc="upper right",
-    bbox_to_anchor=(0.99, 0.99),
+    bbox_to_anchor=(0.89, 0.85),
+    fontsize=14,
     frameon=True
 )
 
