@@ -110,7 +110,7 @@ for median in bp["medians"]:
 ax.set_xticks(range(1, 13))
 ax.set_xticklabels(months)
 ax.set_xlabel("Месяц")
-ax.set_ylabel("Средняя скорость ветра, м/с")
+ax.set_ylabel("Среднемесячная скорость ветра, м/с")
 
 # сетка
 ax.grid(axis="y", linestyle="--", alpha=0.6)
