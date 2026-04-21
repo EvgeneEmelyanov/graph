@@ -19,7 +19,7 @@ EXCEL_ITEMS = [
     # {"path": r"D:\SS.xlsx", "label": "Секционированная система", "out_name": "sectioned_system"},
     # {"path": r"D:\D.xlsx", "label": "Двойная система", "out_name": "double_system"},
 
-    {"path": r"D:\comb_results.xlsx", "label": "Секционированная система", "out_name": "double_system"},
+    # {"path": r"D:\comb_results.xlsx", "label": "Секционированная система", "out_name": "double_system"},
 
 
 
