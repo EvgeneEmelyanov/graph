@@ -3,7 +3,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import FuncFormatter, MultipleLocator
 
 
 # ============================================================
@@ -19,12 +19,17 @@ MULTI_FRONT_MODE = True
 
 # Если True, Pareto-фронт строится только по feasible-точкам
 # Если False, Pareto-фронт строится по всем точкам
-PARETO_ONLY_ON_FEASIBLE = False
+PARETO_ONLY_ON_FEASIBLE = True
 
-CSV_FILE = r"D:\1C_adaptive_tune.csv"
+CSV_FILE = r"C:\Users\Balt_\Desktop\Диссер\01_Результаты моделирования\04_Оптимизация весов _2С\25-300\125_adaptive_tune.csv"
 
 # Время моделирования для перевода LOLH -> LOLP
 SIM_HOURS = 175320.0
+
+# Фиксированный порядок для оси Y:
+# подписи будут 1,0 ... 10,0 и т.д., а общий множитель будет указан в названии оси
+Y_EXPONENT = -5
+Y_TICK_STEP = 1e-5
 
 # Мягкие, приглушённые, но разные цвета
 SOFT_COLORS = [
@@ -41,56 +46,31 @@ SOFT_COLORS = [
 ]
 
 FRONTS = [
-    # {
-    #     "label": "ВЭУ 75%",
-    #     "csv": r"D:\75_adaptive_tune.csv",
-    #     "color": SOFT_COLORS[0],
-    # },
     {
         "label": "ВЭУ 100%",
-        "csv": r"D:\100_adaptive_tune.csv",
+        "csv": r"C:\Users\Balt_\Desktop\Диссер\01_Результаты моделирования\04_Оптимизация весов _2С\25-300\100_adaptive_tune.csv",
         "color": SOFT_COLORS[1],
     },
     {
         "label": "ВЭУ 150%",
-        "csv": r"D:\150_adaptive_tune.csv",
+        "csv": r"C:\Users\Balt_\Desktop\Диссер\01_Результаты моделирования\04_Оптимизация весов _2С\25-300\150_adaptive_tune.csv",
         "color": SOFT_COLORS[2],
     },
     {
         "label": "ВЭУ 200%",
-        "csv": r"D:\200_adaptive_tune.csv",
+        "csv": r"C:\Users\Balt_\Desktop\Диссер\01_Результаты моделирования\04_Оптимизация весов _2С\25-300\200_adaptive_tune.csv",
         "color": SOFT_COLORS[3],
     },
     {
         "label": "ВЭУ 250%",
-        "csv": r"D:\250_adaptive_tune.csv",
+        "csv": r"C:\Users\Balt_\Desktop\Диссер\01_Результаты моделирования\04_Оптимизация весов _2С\25-300\250_adaptive_tune.csv",
         "color": SOFT_COLORS[4],
     },
     {
         "label": "ВЭУ 300%",
-        "csv": r"D:\300_adaptive_tune.csv",
+        "csv": r"C:\Users\Balt_\Desktop\Диссер\01_Результаты моделирования\04_Оптимизация весов _2С\25-300\300_adaptive_tune.csv",
         "color": SOFT_COLORS[5],
     },
-    # {
-    #     "label": "ВЭУ 125%",
-    #     "csv": r"D:\125_adaptive_tune.csv",
-    #     "color": SOFT_COLORS[6],
-    # },
-    # {
-    #     "label": "ВЭУ 175%",
-    #     "csv": r"D:\175_adaptive_tune.csv",
-    #     "color": SOFT_COLORS[7],
-    # },
-    # {
-    #     "label": "ВЭУ 225%",
-    #     "csv": r"D:\225_adaptive_tune.csv",
-    #     "color": SOFT_COLORS[8],
-    # },
-    # {
-    #     "label": "ВЭУ 275%",
-    #     "csv": r"D:\275_adaptive_tune.csv",
-    #     "color": SOFT_COLORS[9],
-    # },
 ]
 
 
@@ -101,12 +81,22 @@ def comma_formatter(x, pos):
     return f"{x:.1f}".replace(".", ",")
 
 
+def to_superscript(n: int) -> str:
+    sup_map = {
+        "-": "⁻",
+        "0": "⁰", "1": "¹", "2": "²", "3": "³",
+        "4": "⁴", "5": "⁵", "6": "⁶",
+        "7": "⁷", "8": "⁸", "9": "⁹",
+    }
+    return "".join(sup_map[c] for c in str(n))
+
+
 def sci_1_decimal(value: float) -> str:
     """
     Формат x,x·10^-y
     """
     if value == 0:
-        return "0,0·10^0"
+        return "0,0·10⁰"
 
     exp = 0
     v = abs(value)
@@ -129,14 +119,17 @@ def sci_1_decimal(value: float) -> str:
     return f"{sign}{mantissa:.1f}·10{exp_str}".replace(".", ",")
 
 
-def y_formatter(x, pos):
-    if x == 0:
+def y_formatter_fixed_exp(x, pos):
+    """
+    Фиксированный порядок для оси Y:
+    например, при Y_EXPONENT = -5 будут подписи 1,0 ... 10,0,
+    а общий множитель будет указан в подписи оси.
+    """
+    if abs(x) < 1e-20:
         return "0"
 
-    if abs(x) < 0.1:
-        return sci_1_decimal(x)
-
-    return f"{x:.1f}".replace(".", ",")
+    scaled = x / (10 ** Y_EXPONENT)
+    return f"{scaled:.1f}".replace(".", ",")
 
 
 # ============================================================
@@ -267,14 +260,6 @@ def prepare_fronts():
 
     return prepared
 
-def to_superscript(n: int) -> str:
-    sup_map = {
-        "-": "⁻",
-        "0": "⁰", "1": "¹", "2": "²", "3": "³",
-        "4": "⁴", "5": "⁵", "6": "⁶",
-        "7": "⁷", "8": "⁸", "9": "⁹",
-    }
-    return "".join(sup_map[c] for c in str(n))
 
 # ============================================================
 # ОСНОВНОЙ КОД
@@ -289,8 +274,10 @@ if all(len(f["rows"]) == 0 for f in fronts):
 
 fig, ax = plt.subplots(figsize=(11, 8))
 
+# Формат осей
 ax.xaxis.set_major_formatter(FuncFormatter(comma_formatter))
-ax.yaxis.set_major_formatter(FuncFormatter(y_formatter))
+ax.yaxis.set_major_formatter(FuncFormatter(y_formatter_fixed_exp))
+ax.yaxis.set_major_locator(MultipleLocator(Y_TICK_STEP))
 
 single_mode = not MULTI_FRONT_MODE
 show_pareto_labels_now = SHOW_LABELS_FOR_PARETO and single_mode
@@ -370,7 +357,7 @@ for front in fronts:
             )
 
 ax.set_xlabel("LCOE, руб/кВт·ч", fontsize=16)
-ax.set_ylabel("LOLP", fontsize=16)
+ax.set_ylabel(f"LOLP · 10{to_superscript(Y_EXPONENT)}", fontsize=16)
 ax.tick_params(axis="both", labelsize=16)
 ax.grid(True, alpha=0.3)
 

@@ -13,9 +13,9 @@ from openpyxl.utils import range_boundaries
 # ============================================================
 # НАСТРОЙКИ
 # ============================================================
-FILE = r"D:\1.xlsx"
+# FILE = r"D:\1.xlsx"
 # FILE = r"D:\discharge_current.xlsx"
-# FILE = r"D:\reserve_level.xlsx"
+FILE = r"D:\reserve_level.xlsx"
 SHEET = "SWEEP_2"
 OUTPUT_DIR = r"D:\results"
 
@@ -23,19 +23,19 @@ OUTPUT_DIR = r"D:\results"
 TARGET_INDEX = 1
 
 # Типовой размер блока
-MATRIX_RANGE = "A2:T13"
+# MATRIX_RANGE = "A2:T13"
 # MATRIX_RANGE = "A2:T43"
-# MATRIX_RANGE = "A2:AH43"
+MATRIX_RANGE = "A2:AH43"
 
 # Режим построения: "3D" или "2D"
 PLOT_MODE = "3D"
 
 # Подписи осей
-# X_AXIS_LABEL = "Мин. уровень заряда"
-X_AXIS_LABEL = "Номинальная мощность ДГУ, кВт"
+X_AXIS_LABEL = "Мин. уровень заряда"
+# X_AXIS_LABEL = "Номинальная мощность ДГУ, кВт"
 # X_AXIS_LABEL = "Максимальный ток разряда, С"
-# Y_AXIS_LABEL = "Доля емкости СНЭ"
-Y_AXIS_LABEL = "Уровень загрузки ДГУ"
+Y_AXIS_LABEL = "Доля емкости СНЭ"
+# Y_AXIS_LABEL = "Уровень загрузки ДГУ"
 
 FIGSIZE = (12, 8)
 DPI = 350
@@ -64,8 +64,8 @@ Y_TRIM = (0, 0)
 # --------------------------------
 # Прореживание подписей осей
 # --------------------------------
-TICK_STEP_X = 4
-TICK_STEP_Y = 2
+TICK_STEP_X = 8
+TICK_STEP_Y = 8
 TICK_STEP_Z = 1
 
 # Форматирование подписей
