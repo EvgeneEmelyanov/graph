@@ -20,7 +20,7 @@ SHEET = "SWEEP_2"
 OUTPUT_DIR = r"D:\results"
 
 # Выбор критерия по номеру // 1, 2, 3, 4, 5, 8, 9, 10
-TARGET_INDEX = 1
+TARGET_INDEX = 10
 
 # Типовой размер блока
 # MATRIX_RANGE = "A2:T13"
@@ -28,13 +28,13 @@ TARGET_INDEX = 1
 MATRIX_RANGE = "A2:AH43"
 
 # Режим построения: "3D" или "2D"
-PLOT_MODE = "3D"
+PLOT_MODE = "2D"
 
 # Подписи осей
 X_AXIS_LABEL = "Мин. уровень заряда"
 # X_AXIS_LABEL = "Номинальная мощность ДГУ, кВт"
 # X_AXIS_LABEL = "Максимальный ток разряда, С"
-Y_AXIS_LABEL = "Доля емкости СНЭ"
+Y_AXIS_LABEL = "Емкость СНЭ, %"
 # Y_AXIS_LABEL = "Уровень загрузки ДГУ"
 
 FIGSIZE = (12, 8)
@@ -343,7 +343,7 @@ def extract_matrix(ws, matrix_start_row: int, matrix_range: str):
         z.append(row_vals)
 
     x = np.array(x, dtype=float)
-    y = np.array(y, dtype=float)
+    y = np.array(y, dtype=float) * 100 #изменил
     z = np.array(z, dtype=float)
 
     return x, y, z
