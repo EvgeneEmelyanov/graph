@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import colors
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.ticker import FuncFormatter, ScalarFormatter
 from openpyxl import load_workbook
@@ -14,9 +15,8 @@ from openpyxl.utils import range_boundaries
 # НАСТРОЙКИ
 # ============================================================
 # FILE = r"D:\1.xlsx"
-# FILE = r"D:\discharge_current.xlsx"
+FILE = r"D:\discharge_current.xlsx"
 # FILE = r"D:\reserve_level.xlsx"
-FILE = r"D:\1comb_results.xlsx"
 SHEET = "SWEEP_2"
 OUTPUT_DIR = r"D:\results"
 
@@ -25,22 +25,18 @@ TARGET_INDEX = 1
 
 # Типовой размер блока
 # MATRIX_RANGE = "A2:T13"
-# MATRIX_RANGE = "A2:T43"
+MATRIX_RANGE = "A2:T43"
 # MATRIX_RANGE = "A2:AH43"
-MATRIX_RANGE = "A2:N15"
 
 # Режим построения: "3D" или "2D"
 PLOT_MODE = "2D"
 
 # Подписи осей
-# X_AXIS_LABEL = "Мин. уровень заряда"
-X_AXIS_LABEL = "Номинальная мощность ДГУ, кВт"
+X_AXIS_LABEL = "Мин. уровень заряда"
+# X_AXIS_LABEL = "Номинальная мощность ДГУ, кВт"
 # X_AXIS_LABEL = "Максимальный ток разряда, С"
-
-# Y_AXIS_LABEL = "Емкость СНЭ, %"
+Y_AXIS_LABEL = "Емкость СНЭ, %"
 # Y_AXIS_LABEL = "Уровень загрузки ДГУ"
-Y_AXIS_LABEL = "Мощность ВЭУ, %"
-
 
 FIGSIZE = (12, 8)
 DPI = 350
@@ -100,9 +96,17 @@ BOTTOM_MARGIN = 0.12
 TOP_MARGIN = 0.96
 
 # Положение подписи масштаба оси Z (в координатах axes fraction)
-# Можно подвинуть при необходимости
 Z_SCALE_TEXT_X = 0.02
 Z_SCALE_TEXT_Y = 0.67
+
+# --------------------------------
+# Настройки "ровных" значений colorbar
+# --------------------------------
+COLORBAR_TICKS_COUNT = 6
+FORCE_COLORBAR_STEP = None
+# Примеры:
+# FORCE_COLORBAR_STEP = 5
+# FORCE_COLORBAR_STEP = 0.1
 
 MATTE_DIFF_CMAP = LinearSegmentedColormap.from_list(
     "matte_diff",
@@ -348,7 +352,7 @@ def extract_matrix(ws, matrix_start_row: int, matrix_range: str):
         z.append(row_vals)
 
     x = np.array(x, dtype=float)
-    y = np.array(y, dtype=float) * 1 #изменил
+    y = np.array(y, dtype=float) * 100
     z = np.array(z, dtype=float)
 
     return x, y, z
@@ -428,6 +432,95 @@ def add_manual_z_scale_text(ax, exponent):
     )
 
 
+def nice_number(x, round_=True):
+    """
+    Возвращает "красивое" число порядка:
+    1, 2, 5, 10 * 10^n
+    """
+    if x == 0 or not np.isfinite(x):
+        return 1.0
+
+    exp = np.floor(np.log10(abs(x)))
+    f = abs(x) / (10 ** exp)
+
+    if round_:
+        if f < 1.5:
+            nf = 1.0
+        elif f < 3:
+            nf = 2.0
+        elif f < 7:
+            nf = 5.0
+        else:
+            nf = 10.0
+    else:
+        if f <= 1:
+            nf = 1.0
+        elif f <= 2:
+            nf = 2.0
+        elif f <= 5:
+            nf = 5.0
+        else:
+            nf = 10.0
+
+    return np.sign(x) * nf * (10 ** exp)
+
+
+def compute_nice_bounds(z, ticks_count=6, forced_step=None):
+    """
+    Строит красивые границы и шаг для colorbar.
+    """
+    arr = np.asarray(z, dtype=float)
+    arr = arr[np.isfinite(arr)]
+
+    if arr.size == 0:
+        return 0.0, 1.0, 0.2
+
+    zmin = float(np.min(arr))
+    zmax = float(np.max(arr))
+
+    if zmin == zmax:
+        if zmin == 0:
+            return -1.0, 1.0, 0.5
+        span = abs(zmin) * 0.1
+        if span == 0:
+            span = 1.0
+        return zmin - span, zmax + span, span / 2
+
+    if forced_step is not None:
+        step = float(forced_step)
+    else:
+        raw_step = (zmax - zmin) / max(ticks_count - 1, 1)
+        step = abs(nice_number(raw_step, round_=True))
+
+    nice_min = np.floor(zmin / step) * step
+    nice_max = np.ceil(zmax / step) * step
+
+    if np.isclose(nice_min, nice_max):
+        nice_max = nice_min + step
+
+    return nice_min, nice_max, step
+
+
+def build_color_levels(z, contour_levels=120, ticks_count=6, forced_step=None):
+    """
+    Возвращает:
+    - levels для contourf
+    - ticks для colorbar
+    - norm для одинаковой шкалы
+    """
+    nice_min, nice_max, step = compute_nice_bounds(
+        z,
+        ticks_count=ticks_count,
+        forced_step=forced_step
+    )
+
+    levels = np.linspace(nice_min, nice_max, contour_levels + 1)
+    ticks = np.arange(nice_min, nice_max + step * 0.5, step)
+    norm = colors.Normalize(vmin=nice_min, vmax=nice_max)
+
+    return levels, ticks, norm
+
+
 def setup_common_2d_axis(ax, x, y):
     xticks = make_tick_values(x, TICK_STEP_X)
     yticks = make_tick_values(y, TICK_STEP_Y)
@@ -460,13 +553,14 @@ def save_figure(fig, display_title, mode_suffix):
     print(f"Готово: {out_path}")
 
 
-def create_colorbar(fig, ax, mappable, display_title, shrink, pad, aspect, labelpad):
+def create_colorbar(fig, ax, mappable, display_title, shrink, pad, aspect, labelpad, ticks=None):
     cbar = fig.colorbar(
         mappable,
         ax=ax,
         shrink=shrink,
         pad=pad,
-        aspect=aspect
+        aspect=aspect,
+        ticks=ticks
     )
 
     formatter = CommaScalarFormatter(useMathText=True)
@@ -494,12 +588,20 @@ def create_colorbar(fig, ax, mappable, display_title, shrink, pad, aspect, label
 def plot_3d_surface(display_title, x, y, Z):
     X, Y = np.meshgrid(x, y)
 
+    levels, cbar_ticks, norm = build_color_levels(
+        Z,
+        contour_levels=CONTOUR_LEVELS,
+        ticks_count=COLORBAR_TICKS_COUNT,
+        forced_step=FORCE_COLORBAR_STEP
+    )
+
     fig = plt.figure(figsize=FIGSIZE, dpi=DPI)
     ax = fig.add_subplot(111, projection="3d")
 
     surf = ax.plot_surface(
         X, Y, Z,
         cmap=MATTE_DIFF_CMAP,
+        norm=norm,
         linewidth=EDGE_LINEWIDTH,
         edgecolor=EDGE_COLOR,
         alpha=SURFACE_ALPHA,
@@ -556,15 +658,13 @@ def plot_3d_surface(display_title, x, y, Z):
             shrink=0.82,
             pad=0.04,
             aspect=22,
-            labelpad=16
+            labelpad=16,
+            ticks=cbar_ticks
         )
 
     fig.canvas.draw()
 
-    # Скрываем стандартный offset у оси Z, чтобы не мешал
     ax.zaxis.get_offset_text().set_visible(False)
-
-    # Добавляем свою подпись масштаба левее и над осью Z
     add_manual_z_scale_text(ax, z_exp)
 
     save_figure(fig, display_title, "3D")
@@ -575,16 +675,25 @@ def plot_2d_contour(display_title, x, y, Z):
 
     fig, ax = plt.subplots(figsize=FIGSIZE, dpi=DPI)
 
+    levels, cbar_ticks, norm = build_color_levels(
+        Z,
+        contour_levels=CONTOUR_LEVELS,
+        ticks_count=COLORBAR_TICKS_COUNT,
+        forced_step=FORCE_COLORBAR_STEP
+    )
+
     if CONTOUR_FILLED:
         mappable = ax.contourf(
             X, Y, Z,
-            levels=CONTOUR_LEVELS,
-            cmap=MATTE_DIFF_CMAP
+            levels=levels,
+            cmap=MATTE_DIFF_CMAP,
+            norm=norm
         )
     else:
         mappable = ax.pcolormesh(
             X, Y, Z,
             cmap=MATTE_DIFF_CMAP,
+            norm=norm,
             shading="auto"
         )
 
@@ -606,7 +715,8 @@ def plot_2d_contour(display_title, x, y, Z):
             shrink=0.96,
             pad=0.03,
             aspect=25,
-            labelpad=14
+            labelpad=14,
+            ticks=cbar_ticks
         )
 
     save_figure(fig, display_title, "2D")

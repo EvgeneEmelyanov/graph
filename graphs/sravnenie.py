@@ -28,11 +28,12 @@ EXCEL_ITEMS = [
     # {"path": r"D:\200 10 40.xlsx", "label": "Cекционированная система", "out_name": "200 10 40"},
     # {"path": r"D:\300 10 40.xlsx", "label": "Cекционированная система", "out_name": "300 10 40"},
 
-    # {"path": r"D:\200 0 0.xlsx", "label": "Секционированная система", "out_name": "200 0 0"},
-    # {"path": r"D:\200 0 30.xlsx", "label": "Секционированная система", "out_name": "200 0 30"},
-    # {"path": r"D:\200 0 80.xlsx", "label": "Секционированная система", "out_name": "200 0 80"},
-    # {"path": r"D:\200 10 40.xlsx", "label": "Секционированная система", "out_name": "200 10 40"},
-    # {"path": r"D:\200 30 50.xlsx", "label": "Секционированная система", "out_name": "200 30 50"},
+    # {"path": r"D:\D100.xlsx", "label": "Двойная система", "out_name": "D_ВЭУ 100%"},
+    # {"path": r"D:\D200.xlsx", "label": "Двойная система", "out_name": "D_ВЭУ 200%"},
+    # {"path": r"D:\D300.xlsx", "label": "Двойная система", "out_name": "D_ВЭУ 300%"},
+    {"path": r"D:\SS100.xlsx", "label": "Секционированная система", "out_name": "SS_ВЭУ 100%"},
+    {"path": r"D:\SS200.xlsx", "label": "Секционированная система", "out_name": "SS_ВЭУ 200%"},
+    {"path": r"D:\SS300.xlsx", "label": "Секционированная система", "out_name": "SS_ВЭУ 300%"},
 ]
 
 SHEET_NAME = "SWEEP_2"
@@ -41,7 +42,7 @@ OUTPUT_DIR = r"D:\results"
 # BASE_RANGE = "A2:AU6"
 # BASE_RANGE = "A2:L14"
 # BASE_RANGE = "A2:Y14"
-BASE_RANGE = "A2:AK5"
+BASE_RANGE = "A2:L5"
 
 X_AXIS_LABEL = "Мощность ДГУ, кВт"
 # X_AXIS_LABEL = "Емкость СНЭ, %"
@@ -51,7 +52,7 @@ Y_AXIS_LABEL = "Количество ДГУ"
 SCENARIO_AGGREGATION = "mean"
 
 TOP_THRESHOLD_LCOE = 0.95
-TOP_THRESHOLD_RELIABILITY = 0.99
+TOP_THRESHOLD_RELIABILITY = 0.975
 
 GRID_COLOR = "#8a8a8a"
 
@@ -64,9 +65,9 @@ INTERSECTION_COLORS = [
 
 INTERSECTION_LABELS = {
     0: "Не входит в топ",
-    1: "Только LCOE",
-    2: "Только надежность",
-    3: "LCOE + надежность",
+    1: "Топ LCOE",
+    2: "Топ LOLP",
+    3: "Топ LCOE и LOLP",
 }
 
 
@@ -187,10 +188,10 @@ def process_file(item):
 
     # Надежность (взвешенная)
     REL = (
-        0.25 * ENS_s +
-        0.25 * LOLH_s +
-        0.25 * EVT_N_s +
-        0.25 * EVT_MAX_s
+        0.0 * ENS_s +
+        1 * LOLH_s +
+        0.0 * EVT_N_s +
+        0.0 * EVT_MAX_s
     )
 
     # Маски top 99%

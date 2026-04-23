@@ -8,7 +8,7 @@ from openpyxl import load_workbook
 # =========================
 # НАСТРОЙКИ
 # =========================
-EXCEL_PATH = r"D:\comb_results.xlsx"
+EXCEL_PATH = r"D:\2comb_results.xlsx"
 SHEET_NAME = "SWEEP_2"
 OUTPUT_DIR = r"D:\results"
 
@@ -26,7 +26,7 @@ SIM_YEARS = 1
 # X_TRIM = (1, 2) -> убрать 1 первое значение по X и 2 последних
 # Y_TRIM = (0, 1) -> убрать 1 последнее значение по Y
 X_TRIM = (0, 0)
-Y_TRIM = (0, 0)
+Y_TRIM = (4, 0)
 
 METRICS = [
     ("LCOE", "LCOE, руб/кВт∙ч"),

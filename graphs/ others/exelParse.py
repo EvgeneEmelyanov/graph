@@ -12,10 +12,10 @@ SRC_SHEET = "SWEEP_2"
 DST_SHEET = "SWEEP_2"
 
 DEFAULT_SRC_DIR = r"D:\\"
-DEFAULT_OUT_PATH = r"D:\comb_results.xlsx"
+DEFAULT_OUT_PATH = r"D:\2comb_results.xlsx"
 
 # ORDER = ["1", "15", "20", "25", "30"]
-ORDER = ["SS_1", "D_1"]
+ORDER = ["SS_3", "D_3"]
 # ORDER = ["2_1", "2_2", "4_1", "4_2", "6_1", "6_2", "8_1", "8_2"]
 # ORDER = ["0", "50", "100", "200", "50+", "100+", "200+"]
 # ORDER = ["200 0 0", "200 0 30", "200 0 80", "200 10 40", "200 30 50", "0 10 40", "100 10 40", "300 10 40"]
